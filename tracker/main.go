@@ -19,10 +19,11 @@ func main(){
         log.Printf("Error opening %v: %v", path, err)
     }
 
-    _, err = mod.Load(file)
+    modFile, err := mod.Load(file)
     if err != nil {
         log.Printf("Error loading %v: %v", path, err)
     } else {
         log.Printf("Successfully loaded %v", path)
+        log.Printf("Mod name: '%v'", modFile.Name)
     }
 }
