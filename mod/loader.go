@@ -33,12 +33,13 @@ type Pattern struct {
 
 type Sample struct {
     Name string
-    Length int
+    Length uint16
     FineTune byte // -128 to 127
     Volume byte // 0-64
     LoopStart int
     LoopLength int
-    Data []int8 // the raw sample data
+    // Data []int8 // the raw sample data
+    Data []float32
 }
 
 // big endian 16-bit word
@@ -142,7 +143,7 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
 
         samples = append(samples, Sample{
             Name: string(sampleName),
-            Length: int(sampleLength),
+            Length: sampleLength,
             FineTune: fineTune,
             Volume: volume,
             LoopStart: int(loopStart),
@@ -229,19 +230,19 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
             continue
         }
 
-        if samples[i].Length <= 0 || samples[i].Length > 65536 {
-            return nil, fmt.Errorf("Sample %d has invalid length: %d", i, samples[i].Length)
-        }
-
         log.Printf("Sample %v length %v", i, samples[i].Length * 2)
-        data := make([]int8, 0, samples[i].Length * 2)
+        data := make([]float32, 0, samples[i].Length * 2)
 
         for range samples[i].Length * 2 {
             value, err := readByte(reader)
             if err != nil {
                 return nil, err
             }
-            data = append(data, int8(value))
+
+            // convert to float, -1/+1 range
+            floatValue := float32(int8(value)) / 128
+
+            data = append(data, floatValue)
         }
 
         samples[i].Data = data

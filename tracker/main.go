@@ -5,6 +5,7 @@ import (
     "log"
     "time"
     "math"
+    "sync"
 
     "github.com/kazzmir/tracker/mod"
 
@@ -13,12 +14,175 @@ import (
     "github.com/hajimehoshi/ebiten/v2/audio"
 )
 
+type AudioBuffer struct {
+    // mono channel buffer of samples
+    Buffer []float32
+    lock sync.Mutex
+
+    start int
+    end int
+    count int
+}
+
+func (buffer *AudioBuffer) Read(data []float32) int {
+    buffer.lock.Lock()
+    defer buffer.lock.Unlock()
+
+    total := 0
+
+    if buffer.count == 0 {
+        return total
+    }
+
+    for i := 0; i < len(data); i++ {
+        if buffer.count == 0 {
+            break
+        }
+        data[i] = buffer.Buffer[buffer.start]
+        buffer.start = (buffer.start + 1) % len(buffer.Buffer)
+        buffer.count -= 1
+        total += 1
+    }
+
+    return total
+}
+
+func (buffer *AudioBuffer) Write(data []float32) {
+    buffer.lock.Lock()
+    defer buffer.lock.Unlock()
+
+    for _, value := range data {
+        if buffer.count >= len(buffer.Buffer) {
+            break
+        }
+
+        buffer.count += 1
+        buffer.Buffer[buffer.end] = value
+        buffer.end = (buffer.end + 1) % len(buffer.Buffer)
+    }
+}
+
+func MakeAudioBuffer(sampleRate int) *AudioBuffer {
+    return &AudioBuffer{
+        // one full second worth of buffering
+        Buffer: make([]float32, sampleRate),
+    }
+}
+
+type Channel struct {
+    Engine *Engine
+    AudioBuffer *AudioBuffer
+    ChannelNumber int
+
+    buffer []float32
+
+    CurrentSample *mod.Sample
+    endPosition int
+    startPosition int
+}
+
+func (channel *Channel) Read(data []byte) (int, error) {
+
+    samples := len(data) / 4 / 2
+
+    sampleFrequency := 22050
+    samples = (samples * sampleFrequency) / channel.Engine.SampleRate
+
+    rate := float32(sampleFrequency) / float32(channel.Engine.SampleRate)
+
+    part := channel.buffer[:samples]
+    floatSamples := channel.AudioBuffer.Read(part)
+
+    // log.Printf("Emit %v samples", samples)
+
+    i := 0
+    var sampleIndex float32
+    for int(sampleIndex) < floatSamples {
+        value := part[int(sampleIndex)]
+        bits := math.Float32bits(value)
+        data[i*8+0] = byte(bits)
+        data[i*8+1] = byte(bits >> 8)
+        data[i*8+2] = byte(bits >> 16)
+        data[i*8+3] = byte(bits >> 24)
+
+        data[i*8+4] = byte(bits)
+        data[i*8+5] = byte(bits >> 8)
+        data[i*8+6] = byte(bits >> 16)
+        data[i*8+7] = byte(bits >> 24)
+
+        sampleIndex += rate
+
+        i += 1
+    }
+
+    i *= 8
+
+    /*
+    i := 0
+    if channel.CurrentSample != nil {
+        sample := channel.CurrentSample
+        for samplePosition := channel.startPosition; samplePosition < channel.endPosition; samplePosition++ {
+            value := (float32(sample.Data[samplePosition])) / 128
+            bits := math.Float32bits(value)
+            data[i*8+0] = byte(bits)
+            data[i*8+1] = byte(bits >> 8)
+            data[i*8+2] = byte(bits >> 16)
+            data[i*8+3] = byte(bits >> 24)
+
+            data[i*8+4] = byte(bits)
+            data[i*8+5] = byte(bits >> 8)
+            data[i*8+6] = byte(bits >> 16)
+            data[i*8+7] = byte(bits >> 24)
+        }
+    }
+    */
+
+    for i < len(data) {
+        data[i] = 0
+        i += 1
+    }
+
+    return len(data), nil
+}
+
+func (channel *Channel) Update(rate float32) error {
+    note := channel.Engine.GetNote(channel.ChannelNumber)
+    log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
+
+    sample := channel.Engine.GetSample(note.SampleNumber)
+    if sample != channel.CurrentSample {
+        channel.CurrentSample = sample
+        channel.endPosition = 0
+        channel.startPosition = 0
+        log.Printf("Channel %v switched to sample %v", channel.ChannelNumber, sample.Name)
+    } else {
+        channel.startPosition = channel.endPosition
+        channel.endPosition += int(rate * float32(channel.Engine.SampleRate))
+        if channel.endPosition >= len(sample.Data) {
+            channel.endPosition = len(sample.Data)
+        }
+    }
+
+    if channel.CurrentSample != nil {
+        part := channel.CurrentSample.Data[channel.startPosition:channel.endPosition]
+        if len(part) > 0 {
+            channel.AudioBuffer.Write(part)
+        }
+    }
+
+    return nil
+}
+
 type Engine struct {
     ModFile *mod.ModFile
     SampleRate int
     AudioContext *audio.Context
 
     SampleIndex int
+    Channels []*Channel
+
+    CurrentRow int
+    CurrentPattern int
 }
 
 func MakeEngine(modFile *mod.ModFile, sampleRate int, audioContext *audio.Context) (*Engine, error) {
@@ -29,14 +193,50 @@ func MakeEngine(modFile *mod.ModFile, sampleRate int, audioContext *audio.Contex
         AudioContext: audioContext,
     }
 
+    channel0 := engine.MakeChannelVoice(0)
+
+    playChannel0, err := audioContext.NewPlayerF32(channel0)
+    if err != nil {
+        return nil, err
+    }
+    playChannel0.SetBufferSize(time.Second / 2)
+    playChannel0.SetVolume(0.3)
+
+    engine.Channels = append(engine.Channels, channel0)
+
+    playChannel0.Play()
+
+    /*
     player, err := audioContext.NewPlayerF32(engine)
     if err != nil {
         return nil, err
     }
     player.SetBufferSize(time.Second / 2)
     player.Play()
+    */
 
     return engine, nil
+}
+
+func (engine *Engine) MakeChannelVoice(channelNumber int) *Channel {
+    channel := &Channel{
+        Engine: engine,
+        ChannelNumber: channelNumber,
+        AudioBuffer: MakeAudioBuffer(engine.SampleRate),
+        buffer: make([]float32, engine.SampleRate),
+    }
+    return channel
+}
+
+func (engine *Engine) GetSample(sampleNumber byte) *mod.Sample {
+    if sampleNumber < 0 || int(sampleNumber) >= len(engine.ModFile.Samples) {
+        return nil
+    }
+    return &engine.ModFile.Samples[sampleNumber]
+}
+
+func (engine *Engine) GetNote(channel int) *mod.Note {
+    return &engine.ModFile.Patterns[engine.CurrentPattern].Rows[engine.CurrentRow].Notes[channel]
 }
 
 func (engine *Engine) Read(data []byte) (int, error) {
@@ -55,7 +255,7 @@ func (engine *Engine) Read(data []byte) (int, error) {
             break
         }
 
-        value := (float32(sample.Data[engine.SampleIndex])) / 128
+        value := sample.Data[engine.SampleIndex]
         bits := math.Float32bits(value)
         data[i*8+0] = byte(bits)
         data[i*8+1] = byte(bits >> 8)
@@ -85,6 +285,10 @@ func (engine *Engine) Update() error {
             case ebiten.KeyEscape, ebiten.KeyCapsLock:
                 return ebiten.Termination
         }
+    }
+
+    for _, channel := range engine.Channels {
+        channel.Update(1.0/60)
     }
 
     return nil
