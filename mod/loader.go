@@ -38,7 +38,7 @@ type Sample struct {
     Volume byte // 0-64
     LoopStart int
     LoopLength int
-    Data []byte // the raw sample data
+    Data []int8 // the raw sample data
 }
 
 // big endian 16-bit word
@@ -145,8 +145,8 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
             Length: int(sampleLength),
             FineTune: fineTune,
             Volume: volume,
-            LoopStart: int(loopStart) * 2,
-            LoopLength: int(loopLength) * 2,
+            LoopStart: int(loopStart),
+            LoopLength: int(loopLength),
         })
     }
 
@@ -168,12 +168,17 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
         return nil, fmt.Errorf("Could not read orders: %v", err)
     }
 
-    for i := range orderCount {
-        value := orders[i]
-        patternMax = max(patternMax, int(orders[value]))
+    for _, value := range orders {
+        patternMax = max(patternMax, int(value))
     }
 
     log.Printf("Pattern max: %v", patternMax)
+
+    // read mod kind again
+    io.ReadFull(reader, kind)
+
+    position, err := reader.Seek(0, io.SeekCurrent)
+    log.Printf("Position before patterns: %v", position)
 
     // read patterns
     // a pattern consists of 64 rows where each row contains 'channels' number of notes
@@ -215,6 +220,9 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
         })
     }
 
+    position, err = reader.Seek(0, io.SeekCurrent)
+    log.Printf("Before sample data: %v", position)
+
     // read sample data
     for i := range 31 {
         if samples[i].Length == 0 {
@@ -224,16 +232,38 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
         if samples[i].Length <= 0 || samples[i].Length > 65536 {
             return nil, fmt.Errorf("Sample %d has invalid length: %d", i, samples[i].Length)
         }
-        log.Printf("Sample %v length %v", i, samples[i].Length)
-        data := make([]byte, samples[i].Length * 2)
 
-        _, err := io.ReadFull(reader, data)
-        if err != nil {
-            return nil, fmt.Errorf("Could not read sample %d data: %v", i, err)
+        log.Printf("Sample %v length %v", i, samples[i].Length * 2)
+        data := make([]int8, 0, samples[i].Length * 2)
+
+        for range samples[i].Length * 2 {
+            value, err := readByte(reader)
+            if err != nil {
+                return nil, err
+            }
+            data = append(data, int8(value))
         }
 
         samples[i].Data = data
     }
+
+    position, err = reader.Seek(0, io.SeekCurrent)
+    log.Printf("Position after sample data is now %v", position)
+
+    end, err := reader.Seek(0, io.SeekEnd)
+    log.Printf("End of file at %v", end)
+
+    if position != end {
+        log.Printf("  extra bytes!!")
+    }
+
+    rest, err := readByte(reader)
+    if err == nil {
+        return nil, fmt.Errorf("Extra data after samples: %v", rest)
+    }
+
+    // log.Printf("%v", samples[12].Data)
+    // log.Printf("Data length %v samples %v", len(samples[5].Data), samples[5].Length)
 
     return &ModFile{
         Channels: channels,
