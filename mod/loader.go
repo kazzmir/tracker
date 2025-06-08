@@ -176,8 +176,8 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
     log.Printf("Pattern max: %v", patternMax)
 
     // read patterns
-    // a pattern consists of channels * 64 entries, where each channel has 64 entries
-    // an entry is a sample to play, combined with an effect and pitch
+    // a pattern consists of 64 rows where each row contains 'channels' number of notes
+    // a note is a sample to play, combined with an effect and pitch
     patternBytes := make([]byte, 4)
     var patterns []Pattern
     for i := range patternMax + 1 {
