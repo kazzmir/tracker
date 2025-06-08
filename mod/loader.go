@@ -15,16 +15,20 @@ type ModFile struct {
     Samples []Sample
 }
 
-type PatternData struct {
+type Note struct {
     SampleNumber byte // 0-31
     PeriodFrequency uint16 // 0-65535
     EffectNumber byte // 0-15
     EffectParameter byte // 0-255
 }
 
+type Row struct {
+    Notes []Note
+}
+
 type Pattern struct {
     // array of channels, each channel has 64 entries
-    Data [][]PatternData
+    Rows []Row
 }
 
 type Sample struct {
@@ -141,8 +145,8 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
             Length: int(sampleLength),
             FineTune: fineTune,
             Volume: volume,
-            LoopStart: int(loopStart),
-            LoopLength: int(loopLength),
+            LoopStart: int(loopStart) * 2,
+            LoopLength: int(loopLength) * 2,
         })
     }
 
@@ -179,11 +183,10 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
     for i := range patternMax + 1 {
         log.Printf("Reading pattern %d", i)
 
-        var patternData [][]PatternData
-        for range channels {
-
-            var data []PatternData
-            for range 64 {
+        var rows []Row
+        for range 64 {
+            var row Row
+            for range channels {
                 _, err = io.ReadFull(reader, patternBytes)
                 if err != nil {
                     return nil, fmt.Errorf("Could not read pattern data: %v", err)
@@ -196,7 +199,7 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
 
                 // log.Printf("Pattern data: Sample=%d, PeriodFrequency=%d, EffectNumber=%d, EffectParameter=%d", sampleNumber, periodFrequency, effectNumber, effectParameter)
 
-                data = append(data, PatternData{
+                row.Notes = append(row.Notes, Note{
                     SampleNumber: sampleNumber,
                     PeriodFrequency: uint16(periodFrequency),
                     EffectNumber: effectNumber,
@@ -204,11 +207,11 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
                 })
             }
 
-            patternData = append(patternData, data)
+            rows = append(rows, row)
         }
 
         patterns = append(patterns, Pattern{
-            Data: patternData,
+            Rows: rows,
         })
     }
 
@@ -222,7 +225,7 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
             return nil, fmt.Errorf("Sample %d has invalid length: %d", i, samples[i].Length)
         }
         log.Printf("Sample %v length %v", i, samples[i].Length)
-        data := make([]byte, samples[i].Length)
+        data := make([]byte, samples[i].Length * 2)
 
         _, err := io.ReadFull(reader, data)
         if err != nil {
