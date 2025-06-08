@@ -12,6 +12,7 @@ type ModFile struct {
     Name string
     Patterns []Pattern
     Orders []byte
+    Samples []Sample
 }
 
 type PatternData struct {
@@ -26,14 +27,24 @@ type Pattern struct {
     Data [][]PatternData
 }
 
-// little endian 16-bit word
+type Sample struct {
+    Name string
+    Length int
+    FineTune byte // -128 to 127
+    Volume byte // 0-64
+    LoopStart int
+    LoopLength int
+    Data []byte // the raw sample data
+}
+
+// big endian 16-bit word
 func readUint16(reader io.Reader) (uint16, error) {
     var buf [2]byte
     _, err := io.ReadFull(reader, buf[:])
     if err != nil {
         return 0, err
     }
-    return (uint16(buf[0]) | (uint16(buf[1]) << 8)), nil
+    return (uint16(buf[1]) | (uint16(buf[0]) << 8)), nil
 }
 
 func readByte(reader io.Reader) (byte, error) {
@@ -87,6 +98,8 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
 
     name = bytes.TrimRight(name, "\x00")
 
+    var samples []Sample
+
     // read 31 samples
     for i := range 31 {
         sampleName := make([]byte, 22)
@@ -122,6 +135,15 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
         }
 
         log.Printf("Sample %v: Name='%s', Length=%d, FineTune=%d, Volume=%d, LoopStart=%d, LoopLength=%d", i, string(sampleName), sampleLength, fineTune, volume, loopStart, loopLength)
+
+        samples = append(samples, Sample{
+            Name: string(sampleName),
+            Length: int(sampleLength),
+            FineTune: fineTune,
+            Volume: volume,
+            LoopStart: int(loopStart),
+            LoopLength: int(loopLength),
+        })
     }
 
     orderCount, err := readByte(reader)
@@ -190,10 +212,31 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
         })
     }
 
+    // read sample data
+    for i := range 31 {
+        if samples[i].Length == 0 {
+            continue
+        }
+
+        if samples[i].Length <= 0 || samples[i].Length > 65536 {
+            return nil, fmt.Errorf("Sample %d has invalid length: %d", i, samples[i].Length)
+        }
+        log.Printf("Sample %v length %v", i, samples[i].Length)
+        data := make([]byte, samples[i].Length)
+
+        _, err := io.ReadFull(reader, data)
+        if err != nil {
+            return nil, fmt.Errorf("Could not read sample %d data: %v", i, err)
+        }
+
+        samples[i].Data = data
+    }
+
     return &ModFile{
         Channels: channels,
         Patterns: patterns,
         Name: string(name),
         Orders: orders,
+        Samples: samples,
     }, nil
 }
