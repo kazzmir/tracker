@@ -11,6 +11,7 @@ type ModFile struct {
     Channels int
     Name string
     Patterns []Pattern
+    Orders []byte
 }
 
 type PatternData struct {
@@ -133,22 +134,17 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
         return nil, err
     }
 
-    var orders [][]byte
-
     patternMax := 0
-    log.Printf("Reading %v orders", orders)
+    log.Printf("Reading %v orders", orderCount)
+    orders := make([]byte, 128)
+    _, err = io.ReadFull(reader, orders)
+    if err != nil {
+        return nil, fmt.Errorf("Could not read orders: %v", err)
+    }
+
     for i := range orderCount {
-        orderBytes := make([]byte, 128)
-        _, err := io.ReadFull(reader, orderBytes)
-        if err != nil {
-            return nil, fmt.Errorf("Could not read order %v: %v", i, err)
-        }
-
-        for value := range orderBytes {
-            patternMax = max(patternMax, int(orderBytes[value]))
-        }
-
-        orders = append(orders, orderBytes)
+        value := orders[i]
+        patternMax = max(patternMax, int(orders[value]))
     }
 
     log.Printf("Pattern max: %v", patternMax)
@@ -158,7 +154,7 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
     // an entry is a sample to play, combined with an effect and pitch
     patternBytes := make([]byte, 4)
     var patterns []Pattern
-    for i := range patternMax {
+    for i := range patternMax + 1 {
         log.Printf("Reading pattern %d", i)
 
         var patternData [][]PatternData
@@ -176,7 +172,7 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
                 effectNumber := patternBytes[2] & 0xf
                 effectParameter := patternBytes[3]
 
-                log.Printf("Pattern data: Sample=%d, PeriodFrequency=%d, EffectNumber=%d, EffectParameter=%d", sampleNumber, periodFrequency, effectNumber, effectParameter)
+                // log.Printf("Pattern data: Sample=%d, PeriodFrequency=%d, EffectNumber=%d, EffectParameter=%d", sampleNumber, periodFrequency, effectNumber, effectParameter)
 
                 data = append(data, PatternData{
                     SampleNumber: sampleNumber,
@@ -198,5 +194,6 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
         Channels: channels,
         Patterns: patterns,
         Name: string(name),
+        Orders: orders,
     }, nil
 }
