@@ -198,7 +198,7 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
                     return nil, fmt.Errorf("Could not read pattern data: %v", err)
                 }
 
-                sampleNumber := (patternBytes[0] & 0xf) + (patternBytes[2] >> 4)
+                sampleNumber := (patternBytes[0] & 0xf0) + (patternBytes[2] >> 4)
                 periodFrequency := (uint(patternBytes[0] & 0xf) << 8) + uint(patternBytes[1])
                 effectNumber := patternBytes[2] & 0xf
                 effectParameter := patternBytes[3]
