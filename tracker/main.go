@@ -117,7 +117,7 @@ func (channel *Channel) Read(data []byte) (int, error) {
     part := channel.buffer
     floatSamples := channel.AudioBuffer.Read(part)
 
-    log.Printf("Emit %v samples", floatSamples)
+    // log.Printf("Emit %v samples", floatSamples)
 
     i := 0
     for sampleIndex := range floatSamples {
@@ -138,7 +138,7 @@ func (channel *Channel) Read(data []byte) (int, error) {
 
     i *= 8
 
-    log.Printf("Empty sample data %v / %v", len(data) - i, len(data))
+    // log.Printf("Empty sample data %v / %v", len(data) - i, len(data))
 
     /*
     i := 0
@@ -160,12 +160,16 @@ func (channel *Channel) Read(data []byte) (int, error) {
     }
     */
 
+    return floatSamples * 4 * 2, nil
+
+    /*
     for i < len(data) {
         data[i] = 0
         i += 1
     }
 
     return len(data), nil
+    */
 }
 
 func (channel *Channel) Update(rate float32) error {
@@ -177,7 +181,7 @@ func (channel *Channel) Update(rate float32) error {
     // var sample *mod.Sample
 
     if row != channel.currentRow {
-        log.Printf("new row %v", row)
+        // log.Printf("new row %v", row)
         channel.currentRow = row
         if note.SampleNumber != 0 {
             channel.CurrentSample = channel.Engine.GetSample(note.SampleNumber-1)
@@ -222,14 +226,16 @@ func (channel *Channel) Update(rate float32) error {
     }
     */
 
+    samples := int(float32(channel.Engine.SampleRate) * rate)
+    samplesWritten := 0
+
+    channel.AudioBuffer.Lock()
+
     if channel.CurrentSample != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) {
         incrementRate := (7159090.5 / float32(channel.CurrentNote.PeriodFrequency * 2)) / float32(channel.Engine.SampleRate)
 
-        samples := int(float32(channel.Engine.SampleRate) * rate)
+        // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
 
-        log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
-
-        channel.AudioBuffer.Lock()
 
         for range samples {
             position := int(channel.startPosition)
@@ -238,9 +244,8 @@ func (channel *Channel) Update(rate float32) error {
             }
             channel.AudioBuffer.UnsafeWrite(channel.CurrentSample.Data[position])
             channel.startPosition += incrementRate
+            samplesWritten += 1
         }
-
-        channel.AudioBuffer.Unlock()
 
         /*
         part := channel.CurrentSample.Data[channel.startPosition:channel.endPosition]
@@ -251,6 +256,12 @@ func (channel *Channel) Update(rate float32) error {
         }
         */
     }
+
+    for range (samples - samplesWritten) {
+        channel.AudioBuffer.UnsafeWrite(0.0)
+    }
+
+    channel.AudioBuffer.Unlock()
 
     return nil
 }
@@ -286,7 +297,7 @@ func MakeEngine(modFile *mod.ModFile, sampleRate int, audioContext *audio.Contex
         }
         */
 
-        if i == 1 {
+        if true || i == 1 {
 
             channel0 := engine.MakeChannelVoice(i)
 
@@ -294,7 +305,7 @@ func MakeEngine(modFile *mod.ModFile, sampleRate int, audioContext *audio.Contex
             if err != nil {
                 return nil, err
             }
-            playChannel0.SetBufferSize(time.Second / 4)
+            playChannel0.SetBufferSize(time.Second / 2)
             playChannel0.SetVolume(0.3)
 
             engine.Channels = append(engine.Channels, channel0)
@@ -394,13 +405,13 @@ func (engine *Engine) Update() error {
         }
     }
 
-    engine.rowPosition += float32(engine.Speed) * 1.0 / 60.0
+    engine.rowPosition += float32(engine.Speed) * 1.0 / 60.0 * 2
     engine.CurrentRow = int(engine.rowPosition)
     if engine.CurrentRow > len(engine.ModFile.Patterns[engine.CurrentPattern].Rows) - 1 {
         log.Printf("Loop pattern")
         engine.rowPosition = 0
         engine.CurrentRow = 0
-        // engine.CurrentPattern += 1
+        engine.CurrentPattern += 1
         if engine.CurrentPattern >= len(engine.ModFile.Patterns) {
             engine.CurrentPattern = 0
         }
@@ -441,12 +452,14 @@ func main(){
         log.Printf("Mod name: '%v'", modFile.Name)
     }
 
+    /*
     for i := range modFile.Patterns[0].Rows {
         modFile.Patterns[0].Rows[i].Notes = []mod.Note{mod.Note{}, mod.Note{}}
     }
 
     modFile.Patterns[0].Rows[0].Notes = []mod.Note{mod.Note{}, mod.Note{SampleNumber: 0xd, PeriodFrequency: 400}}
     // modFile.Patterns[1].Rows[4].Notes = []mod.Note{mod.Note{SampleNumber: 0xd}}
+    */
 
     ebiten.SetTPS(60)
     ebiten.SetWindowSize(640, 480)
