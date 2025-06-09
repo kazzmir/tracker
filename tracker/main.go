@@ -24,6 +24,14 @@ type AudioBuffer struct {
     count int
 }
 
+func (buffer *AudioBuffer) Lock() {
+    buffer.lock.Lock()
+}
+
+func (buffer *AudioBuffer) Unlock() {
+    buffer.lock.Unlock()
+}
+
 func (buffer *AudioBuffer) Read(data []float32) int {
     buffer.lock.Lock()
     defer buffer.lock.Unlock()
@@ -45,6 +53,16 @@ func (buffer *AudioBuffer) Read(data []float32) int {
     }
 
     return total
+}
+
+func (buffer *AudioBuffer) UnsafeWrite(value float32) {
+    if buffer.count < len(buffer.Buffer) {
+        buffer.count += 1
+        buffer.Buffer[buffer.end] = value
+        buffer.end = (buffer.end + 1) % len(buffer.Buffer)
+    } else {
+        log.Printf("overflow in audio buffer, dropping sample %v", value)
+    }
 }
 
 func (buffer *AudioBuffer) Write(data []float32, rate float32) {
@@ -80,29 +98,30 @@ type Channel struct {
     buffer []float32
 
     CurrentSample *mod.Sample
+    CurrentNote *mod.Note
     currentRow int
-    endPosition int
-    startPosition int
+    // endPosition int
+    startPosition float32
 }
 
 func (channel *Channel) Read(data []byte) (int, error) {
 
-    samples := len(data) / 4 / 2
+    // samples := len(data) / 4 / 2
 
-    sampleFrequency := 22050 / 2
-    samples = (samples * sampleFrequency) / channel.Engine.SampleRate
+    // sampleFrequency := 22050 / 2
+    // samples = (samples * sampleFrequency) / channel.Engine.SampleRate
 
-    rate := float32(sampleFrequency) / float32(channel.Engine.SampleRate)
+    // rate := float32(sampleFrequency) / float32(channel.Engine.SampleRate)
 
-    part := channel.buffer[:samples]
+    // part := channel.buffer[:samples]
+    part := channel.buffer
     floatSamples := channel.AudioBuffer.Read(part)
 
-    // log.Printf("Emit %v samples", samples)
+    log.Printf("Emit %v samples", floatSamples)
 
     i := 0
-    var sampleIndex float32
-    for int(sampleIndex) < floatSamples {
-        value := part[int(sampleIndex)]
+    for sampleIndex := range floatSamples {
+        value := part[sampleIndex]
         bits := math.Float32bits(value)
         data[i*8+0] = byte(bits)
         data[i*8+1] = byte(bits >> 8)
@@ -113,8 +132,6 @@ func (channel *Channel) Read(data []byte) (int, error) {
         data[i*8+5] = byte(bits >> 8)
         data[i*8+6] = byte(bits >> 16)
         data[i*8+7] = byte(bits >> 24)
-
-        sampleIndex += rate
 
         i += 1
     }
@@ -157,51 +174,82 @@ func (channel *Channel) Update(rate float32) error {
         log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
     }
 
-    var sample *mod.Sample
+    // var sample *mod.Sample
 
     if row != channel.currentRow {
-        channel.CurrentSample = nil
+        log.Printf("new row %v", row)
         channel.currentRow = row
-        channel.startPosition = 0
-        channel.endPosition = 0
+        if note.SampleNumber != 0 {
+            channel.CurrentSample = channel.Engine.GetSample(note.SampleNumber-1)
+            channel.CurrentNote = note
+            channel.startPosition = 0
+        }
+        // channel.endPosition = 0
     }
 
+    /*
     if note.SampleNumber > 0 {
         sample = channel.Engine.GetSample(note.SampleNumber-1)
     }
+    */
 
     // assume C-4 is 400
     // noteRate := float32(note.PeriodFrequency) / 400.0
-    noteRate := 7159090.5 / (float32(note.PeriodFrequency) * 2)
+    // noteRate := 7159090.5 / (float32(note.PeriodFrequency) * 2)
+    // noteRate := 261.63 / float32(note.PeriodFrequency)
 
+    /*
     if sample != nil && sample != channel.CurrentSample {
         channel.CurrentSample = sample
-        channel.endPosition = 0
+        // channel.endPosition = 0
         channel.startPosition = 0
         log.Printf("Channel %v switched to sample %v", channel.ChannelNumber, sample.Name)
     } else if channel.CurrentSample != nil {
-        channel.startPosition = channel.endPosition
+        // channel.startPosition = channel.endPosition
         // channel.endPosition += int(rate * float32(channel.Engine.SampleRate) * 4000 / noteRate)
+        / *
         channel.endPosition += int(rate * noteRate)
         if channel.endPosition >= len(channel.CurrentSample.Data) {
             channel.endPosition = len(channel.CurrentSample.Data)
         }
+        * /
 
-        /*
+        / *
         if channel.startPosition == channel.endPosition {
             channel.CurrentSample = nil
         }
-        */
+        * /
     }
+    */
 
-    if channel.CurrentSample != nil && channel.startPosition < channel.endPosition {
-        log.Printf("Write sample %v, %v to %v", channel.CurrentSample.Name, channel.startPosition, channel.endPosition)
+    if channel.CurrentSample != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) {
+        incrementRate := (7159090.5 / float32(channel.CurrentNote.PeriodFrequency * 2)) / float32(channel.Engine.SampleRate)
+
+        samples := int(float32(channel.Engine.SampleRate) * rate)
+
+        log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
+
+        channel.AudioBuffer.Lock()
+
+        for range samples {
+            position := int(channel.startPosition)
+            if position >= len(channel.CurrentSample.Data) {
+                break
+            }
+            channel.AudioBuffer.UnsafeWrite(channel.CurrentSample.Data[position])
+            channel.startPosition += incrementRate
+        }
+
+        channel.AudioBuffer.Unlock()
+
+        /*
         part := channel.CurrentSample.Data[channel.startPosition:channel.endPosition]
         if len(part) > 0 {
             // channel.AudioBuffer.Write(part, noteRate)
             // middle-C
             channel.AudioBuffer.Write(part, 261.63 / float32(note.PeriodFrequency))
         }
+        */
     }
 
     return nil
@@ -274,6 +322,7 @@ func (engine *Engine) MakeChannelVoice(channelNumber int) *Channel {
         ChannelNumber: channelNumber,
         AudioBuffer: MakeAudioBuffer(engine.SampleRate),
         buffer: make([]float32, engine.SampleRate),
+        currentRow: -1,
     }
     return channel
 }
@@ -286,7 +335,13 @@ func (engine *Engine) GetSample(sampleNumber byte) *mod.Sample {
 }
 
 func (engine *Engine) GetNote(channel int) (*mod.Note, int) {
-    return &engine.ModFile.Patterns[engine.CurrentPattern].Rows[engine.CurrentRow].Notes[channel], engine.CurrentRow
+    row := &engine.ModFile.Patterns[engine.CurrentPattern].Rows[engine.CurrentRow]
+
+    if channel < len(row.Notes) {
+        return &row.Notes[channel], engine.CurrentRow
+    } else {
+        return &mod.Note{}, engine.CurrentRow
+    }
 }
 
 /*
@@ -386,15 +441,14 @@ func main(){
         log.Printf("Mod name: '%v'", modFile.Name)
     }
 
-    /*
     for i := range modFile.Patterns[0].Rows {
-        modFile.Patterns[0].Rows[i].Notes = []mod.Note{mod.Note{}}
+        modFile.Patterns[0].Rows[i].Notes = []mod.Note{mod.Note{}, mod.Note{}}
     }
 
-    modFile.Patterns[0].Rows[0].Notes = []mod.Note{mod.Note{SampleNumber: 0xd}}
-    modFile.Patterns[0].Rows[4].Notes = []mod.Note{mod.Note{SampleNumber: 0xd}}
-    */
+    modFile.Patterns[0].Rows[0].Notes = []mod.Note{mod.Note{}, mod.Note{SampleNumber: 0xd, PeriodFrequency: 400}}
+    // modFile.Patterns[1].Rows[4].Notes = []mod.Note{mod.Note{SampleNumber: 0xd}}
 
+    ebiten.SetTPS(60)
     ebiten.SetWindowSize(640, 480)
     ebiten.SetWindowTitle("Mod Tracker")
     ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
