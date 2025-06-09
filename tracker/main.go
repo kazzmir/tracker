@@ -106,7 +106,7 @@ type Channel struct {
 
 func (channel *Channel) Read(data []byte) (int, error) {
 
-    // samples := len(data) / 4 / 2
+    samples := len(data) / 4 / 2
 
     // sampleFrequency := 22050 / 2
     // samples = (samples * sampleFrequency) / channel.Engine.SampleRate
@@ -114,7 +114,7 @@ func (channel *Channel) Read(data []byte) (int, error) {
     // rate := float32(sampleFrequency) / float32(channel.Engine.SampleRate)
 
     // part := channel.buffer[:samples]
-    part := channel.buffer
+    part := channel.buffer[:samples]
     floatSamples := channel.AudioBuffer.Read(part)
 
     // log.Printf("Emit %v samples", floatSamples)
@@ -174,11 +174,9 @@ func (channel *Channel) Read(data []byte) (int, error) {
 
 func (channel *Channel) Update(rate float32) error {
     note, row := channel.Engine.GetNote(channel.ChannelNumber)
-    /*
     if note.SampleNumber != 0 {
         log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
     }
-    */
 
     // var sample *mod.Sample
 
@@ -190,7 +188,6 @@ func (channel *Channel) Update(rate float32) error {
             channel.CurrentNote = note
             channel.startPosition = 0
         }
-        // channel.endPosition = 0
     }
 
     /*
@@ -241,8 +238,13 @@ func (channel *Channel) Update(rate float32) error {
 
         for range samples {
             position := int(channel.startPosition)
-            if position >= len(channel.CurrentSample.Data) {
-                break
+            if position >= len(channel.CurrentSample.Data) || (channel.CurrentSample.LoopLength > 1 && position >= (channel.CurrentSample.LoopStart + channel.CurrentSample.LoopLength) * 2) {
+                if channel.CurrentSample.LoopLength > 1 {
+                    channel.startPosition = float32(channel.CurrentSample.LoopStart * 2)
+                    position = int(channel.startPosition)
+                } else {
+                    break
+                }
             }
             channel.AudioBuffer.UnsafeWrite(channel.CurrentSample.Data[position])
             channel.startPosition += incrementRate
@@ -290,7 +292,7 @@ func MakeEngine(modFile *mod.ModFile, sampleRate int, audioContext *audio.Contex
         SampleRate: sampleRate,
         AudioContext: audioContext,
         Speed: 6,
-        CurrentOrder: 2,
+        // CurrentOrder: 2,
     }
 
     for i := range modFile.Channels {
@@ -300,7 +302,7 @@ func MakeEngine(modFile *mod.ModFile, sampleRate int, audioContext *audio.Contex
         }
         */
 
-        if true || i == 1 {
+        if true || i == 3 {
 
             channel0 := engine.MakeChannelVoice(i)
 
@@ -308,7 +310,7 @@ func MakeEngine(modFile *mod.ModFile, sampleRate int, audioContext *audio.Contex
             if err != nil {
                 return nil, err
             }
-            playChannel0.SetBufferSize(time.Second / 2)
+            playChannel0.SetBufferSize(time.Second / 8)
             playChannel0.SetVolume(0.3)
 
             engine.Channels = append(engine.Channels, channel0)
