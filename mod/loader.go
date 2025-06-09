@@ -13,6 +13,8 @@ type ModFile struct {
     Patterns []Pattern
     Orders []byte
     Samples []Sample
+    // length in orders
+    SongLength int
 }
 
 type Note struct {
@@ -267,6 +269,7 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
     // log.Printf("Data length %v samples %v", len(samples[5].Data), samples[5].Length)
 
     return &ModFile{
+        SongLength: int(orderCount),
         Channels: channels,
         Patterns: patterns,
         Name: string(name),

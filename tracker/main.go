@@ -174,9 +174,11 @@ func (channel *Channel) Read(data []byte) (int, error) {
 
 func (channel *Channel) Update(rate float32) error {
     note, row := channel.Engine.GetNote(channel.ChannelNumber)
+    /*
     if note.SampleNumber != 0 {
         log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
     }
+    */
 
     // var sample *mod.Sample
 
@@ -277,7 +279,7 @@ type Engine struct {
     Channels []*Channel
 
     CurrentRow int
-    CurrentPattern int
+    CurrentOrder int
     rowPosition float32
 }
 
@@ -288,6 +290,7 @@ func MakeEngine(modFile *mod.ModFile, sampleRate int, audioContext *audio.Contex
         SampleRate: sampleRate,
         AudioContext: audioContext,
         Speed: 6,
+        CurrentOrder: 2,
     }
 
     for i := range modFile.Channels {
@@ -345,8 +348,17 @@ func (engine *Engine) GetSample(sampleNumber byte) *mod.Sample {
     return &engine.ModFile.Samples[sampleNumber]
 }
 
+func (engine *Engine) GetPattern() int {
+    if engine.CurrentOrder < 0 || engine.CurrentOrder >= len(engine.ModFile.Orders) {
+        return 0
+    }
+
+    return int(engine.ModFile.Orders[engine.CurrentOrder])
+}
+
 func (engine *Engine) GetNote(channel int) (*mod.Note, int) {
-    row := &engine.ModFile.Patterns[engine.CurrentPattern].Rows[engine.CurrentRow]
+    pattern := engine.GetPattern()
+    row := &engine.ModFile.Patterns[pattern].Rows[engine.CurrentRow]
 
     if channel < len(row.Notes) {
         return &row.Notes[channel], engine.CurrentRow
@@ -354,46 +366,6 @@ func (engine *Engine) GetNote(channel int) (*mod.Note, int) {
         return &mod.Note{}, engine.CurrentRow
     }
 }
-
-/*
-func (engine *Engine) Read(data []byte) (int, error) {
-    sample := &engine.ModFile.Samples[12]
-
-    log.Printf("Read %v samples", len(data) / 4 / 2)
-
-    for i := range data {
-        data[i] = 0
-    }
-
-    for i := 0; i < len(data) / 4 / 2; i += 1 {
-
-        if engine.SampleIndex >= len(sample.Data) {
-            log.Printf("break at Sample index %v i %v", engine.SampleIndex, i)
-            break
-        }
-
-        value := sample.Data[engine.SampleIndex]
-        bits := math.Float32bits(value)
-        data[i*8+0] = byte(bits)
-        data[i*8+1] = byte(bits >> 8)
-        data[i*8+2] = byte(bits >> 16)
-        data[i*8+3] = byte(bits >> 24)
-
-        data[i*8+4] = byte(bits)
-        data[i*8+5] = byte(bits >> 8)
-        data[i*8+6] = byte(bits >> 16)
-        data[i*8+7] = byte(bits >> 24)
-
-        if i % 5 == 0 {
-            // engine.SampleIndex = (engine.SampleIndex + 1) % len(sample.Data)
-            engine.SampleIndex += 1
-        }
-    }
-    log.Printf("  sample index: %v", engine.SampleIndex)
-
-    return len(data), nil
-}
-*/
 
 func (engine *Engine) Update() error {
 
@@ -407,14 +379,15 @@ func (engine *Engine) Update() error {
 
     engine.rowPosition += float32(engine.Speed) * 1.0 / 60.0 * 2
     engine.CurrentRow = int(engine.rowPosition)
-    if engine.CurrentRow > len(engine.ModFile.Patterns[engine.CurrentPattern].Rows) - 1 {
-        log.Printf("Loop pattern")
+    if engine.CurrentRow > len(engine.ModFile.Patterns[0].Rows) - 1 {
         engine.rowPosition = 0
         engine.CurrentRow = 0
-        engine.CurrentPattern += 1
-        if engine.CurrentPattern >= len(engine.ModFile.Patterns) {
-            engine.CurrentPattern = 0
+        engine.CurrentOrder += 1
+        if engine.CurrentOrder >= engine.ModFile.SongLength {
+            engine.CurrentOrder = 0
         }
+
+        log.Printf("next pattern: %v", engine.GetPattern())
     }
 
     for _, channel := range engine.Channels {
