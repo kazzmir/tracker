@@ -230,7 +230,7 @@ func (channel *Channel) Update(rate float32) error {
 
     channel.AudioBuffer.Lock()
 
-    if channel.CurrentSample != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) {
+    if channel.CurrentSample != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentNote.PeriodFrequency > 0 {
         incrementRate := (7159090.5 / float32(channel.CurrentNote.PeriodFrequency * 2)) / float32(channel.Engine.SampleRate)
 
         // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
@@ -238,6 +238,9 @@ func (channel *Channel) Update(rate float32) error {
 
         for range samples {
             position := int(channel.startPosition)
+            if position < 0 {
+                break
+            }
             if position >= len(channel.CurrentSample.Data) || (channel.CurrentSample.LoopLength > 1 && position >= (channel.CurrentSample.LoopStart + channel.CurrentSample.LoopLength) * 2) {
                 if channel.CurrentSample.LoopLength > 1 {
                     channel.startPosition = float32(channel.CurrentSample.LoopStart * 2)
