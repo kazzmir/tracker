@@ -77,6 +77,7 @@ type Channel struct {
     buffer []float32
 
     CurrentSample *mod.Sample
+    currentRow int
     endPosition int
     startPosition int
 }
@@ -85,7 +86,7 @@ func (channel *Channel) Read(data []byte) (int, error) {
 
     samples := len(data) / 4 / 2
 
-    sampleFrequency := 22050
+    sampleFrequency := 22050 / 3
     samples = (samples * sampleFrequency) / channel.Engine.SampleRate
 
     rate := float32(sampleFrequency) / float32(channel.Engine.SampleRate)
@@ -146,24 +147,43 @@ func (channel *Channel) Read(data []byte) (int, error) {
 }
 
 func (channel *Channel) Update(rate float32) error {
-    note := channel.Engine.GetNote(channel.ChannelNumber)
+    note, row := channel.Engine.GetNote(channel.ChannelNumber)
     log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
 
-    sample := channel.Engine.GetSample(note.SampleNumber)
-    if sample != channel.CurrentSample {
+    var sample *mod.Sample
+
+    if row != channel.currentRow {
+        channel.CurrentSample = nil
+        channel.currentRow = row
+        channel.startPosition = 0
+        channel.endPosition = 0
+    }
+
+    if note.SampleNumber > 0 {
+        sample = channel.Engine.GetSample(note.SampleNumber-1)
+    }
+
+    if sample != nil && sample != channel.CurrentSample {
         channel.CurrentSample = sample
         channel.endPosition = 0
         channel.startPosition = 0
         log.Printf("Channel %v switched to sample %v", channel.ChannelNumber, sample.Name)
-    } else {
+    } else if channel.CurrentSample != nil {
         channel.startPosition = channel.endPosition
         channel.endPosition += int(rate * float32(channel.Engine.SampleRate))
-        if channel.endPosition >= len(sample.Data) {
-            channel.endPosition = len(sample.Data)
+        if channel.endPosition >= len(channel.CurrentSample.Data) {
+            channel.endPosition = len(channel.CurrentSample.Data)
         }
+
+        /*
+        if channel.startPosition == channel.endPosition {
+            channel.CurrentSample = nil
+        }
+        */
     }
 
-    if channel.CurrentSample != nil {
+    if channel.CurrentSample != nil && channel.startPosition < channel.endPosition {
+        log.Printf("Write sample %v, %v to %v", channel.CurrentSample.Name, channel.startPosition, channel.endPosition)
         part := channel.CurrentSample.Data[channel.startPosition:channel.endPosition]
         if len(part) > 0 {
             channel.AudioBuffer.Write(part)
@@ -178,11 +198,14 @@ type Engine struct {
     SampleRate int
     AudioContext *audio.Context
 
+    Speed int
+
     SampleIndex int
     Channels []*Channel
 
     CurrentRow int
     CurrentPattern int
+    rowPosition float32
 }
 
 func MakeEngine(modFile *mod.ModFile, sampleRate int, audioContext *audio.Context) (*Engine, error) {
@@ -191,20 +214,33 @@ func MakeEngine(modFile *mod.ModFile, sampleRate int, audioContext *audio.Contex
         ModFile: modFile,
         SampleRate: sampleRate,
         AudioContext: audioContext,
+        Speed: 6,
     }
 
-    channel0 := engine.MakeChannelVoice(0)
+    for i := range modFile.Channels {
+        /*
+        if i > 0 {
+            break
+        }
+        */
 
-    playChannel0, err := audioContext.NewPlayerF32(channel0)
-    if err != nil {
-        return nil, err
+        if i == 1 {
+
+            channel0 := engine.MakeChannelVoice(i)
+
+            playChannel0, err := audioContext.NewPlayerF32(channel0)
+            if err != nil {
+                return nil, err
+            }
+            playChannel0.SetBufferSize(time.Second / 2)
+            playChannel0.SetVolume(0.3)
+
+            engine.Channels = append(engine.Channels, channel0)
+
+            playChannel0.Play()
+        }
+
     }
-    playChannel0.SetBufferSize(time.Second / 2)
-    playChannel0.SetVolume(0.3)
-
-    engine.Channels = append(engine.Channels, channel0)
-
-    playChannel0.Play()
 
     /*
     player, err := audioContext.NewPlayerF32(engine)
@@ -235,8 +271,8 @@ func (engine *Engine) GetSample(sampleNumber byte) *mod.Sample {
     return &engine.ModFile.Samples[sampleNumber]
 }
 
-func (engine *Engine) GetNote(channel int) *mod.Note {
-    return &engine.ModFile.Patterns[engine.CurrentPattern].Rows[engine.CurrentRow].Notes[channel]
+func (engine *Engine) GetNote(channel int) (*mod.Note, int) {
+    return &engine.ModFile.Patterns[engine.CurrentPattern].Rows[engine.CurrentRow].Notes[channel], engine.CurrentRow
 }
 
 func (engine *Engine) Read(data []byte) (int, error) {
@@ -287,6 +323,18 @@ func (engine *Engine) Update() error {
         }
     }
 
+    engine.rowPosition += float32(engine.Speed) * 1.0 / 60.0
+    engine.CurrentRow = int(engine.rowPosition)
+    if engine.CurrentRow > len(engine.ModFile.Patterns[engine.CurrentPattern].Rows) - 1 {
+        log.Printf("Loop pattern")
+        engine.rowPosition = 0
+        engine.CurrentRow = 0
+        // engine.CurrentPattern += 1
+        if engine.CurrentPattern >= len(engine.ModFile.Patterns) {
+            engine.CurrentPattern = 0
+        }
+    }
+
     for _, channel := range engine.Channels {
         channel.Update(1.0/60)
     }
@@ -321,6 +369,15 @@ func main(){
         log.Printf("Successfully loaded %v", path)
         log.Printf("Mod name: '%v'", modFile.Name)
     }
+
+    /*
+    for i := range modFile.Patterns[0].Rows {
+        modFile.Patterns[0].Rows[i].Notes = []mod.Note{mod.Note{}}
+    }
+
+    modFile.Patterns[0].Rows[0].Notes = []mod.Note{mod.Note{SampleNumber: 0xd}}
+    modFile.Patterns[0].Rows[4].Notes = []mod.Note{mod.Note{SampleNumber: 0xd}}
+    */
 
     ebiten.SetWindowSize(640, 480)
     ebiten.SetWindowTitle("Mod Tracker")
