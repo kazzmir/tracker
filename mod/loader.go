@@ -242,7 +242,7 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
             }
 
             // convert to float, -1/+1 range
-            floatValue := float32(int8(value)) / 128
+            floatValue := float32(int8(value)) / 128 * (float32(samples[i].Volume) / 64)
 
             data = append(data, floatValue)
         }
