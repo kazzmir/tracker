@@ -10,7 +10,22 @@ import (
 type Effect byte
 const (
     EffectNone Effect = 0xff
+    EffectArpeggio = 0x0
+    EffectPortamentoUp = 0x1
+    EffectPortamentoDown = 0x2
+    EffectTonePortamento = 0x3
+    EffectVibrato = 0x4
+    EffectPortamentoAndVolumeSlide = 0x5
+    EffectVibratoAndVolumeSlide = 0x6
+    EffectTremolo = 0x7
+    EffectPan = 0x8
+    EffectSampleOffset = 0x9
+    EffectVolumeSlide = 0xa
+    EffectPositionJump = 0xb
     EffectSetVolume = 0xc
+    EffectPatternBreak = 0xd
+    EffectExtra = 0xe
+    EffectSetSpeed = 0xf
 )
 
 type ModFile struct {
