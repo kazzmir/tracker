@@ -7,6 +7,12 @@ import (
     "fmt"
 )
 
+type Effect byte
+const (
+    EffectNone Effect = 0xff
+    EffectSetVolume = 0xc
+)
+
 type ModFile struct {
     Channels int
     Name string

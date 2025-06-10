@@ -95,6 +95,8 @@ type Channel struct {
     AudioBuffer *AudioBuffer
     ChannelNumber int
 
+    Volume float32
+
     buffer []float32
 
     CurrentSample *mod.Sample
@@ -172,7 +174,7 @@ func (channel *Channel) Read(data []byte) (int, error) {
     */
 }
 
-func (channel *Channel) Update(rate float32) error {
+func (channel *Channel) UpdateRow() {
     note, row := channel.Engine.GetNote(channel.ChannelNumber)
     if note.SampleNumber != 0 {
         log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
@@ -180,16 +182,22 @@ func (channel *Channel) Update(rate float32) error {
 
     // var sample *mod.Sample
 
-    if row != channel.currentRow {
-        // log.Printf("new row %v", row)
-        channel.currentRow = row
-        if note.SampleNumber != 0 {
-            channel.CurrentSample = channel.Engine.GetSample(note.SampleNumber-1)
-            channel.CurrentNote = note
-            channel.startPosition = 0
-        }
+    // log.Printf("new row %v", row)
+    channel.currentRow = row
+    if note.SampleNumber != 0 {
+        channel.CurrentSample = channel.Engine.GetSample(note.SampleNumber-1)
+        channel.CurrentNote = note
+        channel.startPosition = 0
     }
 
+    switch note.EffectNumber {
+        case mod.EffectSetVolume:
+            volume := min(note.EffectParameter, 64)
+            channel.Volume = float32(volume) / 64.0
+    }
+}
+
+func (channel *Channel) Update(rate float32) error {
     /*
     if note.SampleNumber > 0 {
         sample = channel.Engine.GetSample(note.SampleNumber-1)
@@ -249,7 +257,7 @@ func (channel *Channel) Update(rate float32) error {
                     break
                 }
             }
-            channel.AudioBuffer.UnsafeWrite(channel.CurrentSample.Data[position])
+            channel.AudioBuffer.UnsafeWrite(channel.CurrentSample.Data[position] * channel.Volume)
             channel.startPosition += incrementRate
             samplesWritten += 1
         }
@@ -295,6 +303,7 @@ func MakeEngine(modFile *mod.ModFile, sampleRate int, audioContext *audio.Contex
         SampleRate: sampleRate,
         AudioContext: audioContext,
         Speed: 6,
+        CurrentRow: -1,
         // CurrentOrder: 2,
     }
 
@@ -340,6 +349,7 @@ func (engine *Engine) MakeChannelVoice(channelNumber int) *Channel {
         Engine: engine,
         ChannelNumber: channelNumber,
         AudioBuffer: MakeAudioBuffer(engine.SampleRate),
+        Volume: 1.0,
         buffer: make([]float32, engine.SampleRate),
         currentRow: -1,
     }
@@ -382,6 +392,8 @@ func (engine *Engine) Update() error {
         }
     }
 
+    oldRow := engine.CurrentRow
+
     engine.rowPosition += float32(engine.Speed) * 1.0 / 60.0 * 2
     engine.CurrentRow = int(engine.rowPosition)
     if engine.CurrentRow > len(engine.ModFile.Patterns[0].Rows) - 1 {
@@ -396,6 +408,10 @@ func (engine *Engine) Update() error {
     }
 
     for _, channel := range engine.Channels {
+        if oldRow != channel.currentRow {
+            channel.UpdateRow()
+        }
+
         channel.Update(1.0/60)
     }
 
