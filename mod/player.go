@@ -92,7 +92,12 @@ type Channel struct {
     buffer []float32
 
     CurrentSample *Sample
-    CurrentNote *Note
+    CurrentFrequency int
+
+    CurrentEffect int
+    CurrentEffectParameter int
+
+    // CurrentNote *Note
     currentRow int
     // endPosition int
     startPosition float32
@@ -166,10 +171,36 @@ func (channel *Channel) Read(data []byte) (int, error) {
     */
 }
 
+func computeAmigaFrequency(frequency int) float32 {
+    return 7159090.5 / float32(frequency * 2)
+}
+
+func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
+    switch channel.CurrentEffect {
+        case EffectPortamentoUp:
+            if !changeRow {
+                channel.CurrentFrequency -= ticks * channel.CurrentEffectParameter
+                channel.CurrentFrequency = max(channel.CurrentFrequency, 1)
+            }
+        case EffectPortamentoDown:
+            if !changeRow {
+                channel.CurrentFrequency += ticks * channel.CurrentEffectParameter
+                channel.CurrentFrequency = min(channel.CurrentFrequency, 2000)
+            }
+    }
+}
+
 func (channel *Channel) UpdateRow() {
+    channel.CurrentEffect = 0
+    channel.CurrentEffectParameter = 0
+
     note, row := channel.Player.GetNote(channel.ChannelNumber)
     if note.SampleNumber != 0 {
         log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
+    }
+
+    if note.PeriodFrequency != 0 {
+        channel.CurrentFrequency = int(note.PeriodFrequency)
     }
 
     // var sample *mod.Sample
@@ -178,7 +209,7 @@ func (channel *Channel) UpdateRow() {
     channel.currentRow = row
     if note.SampleNumber != 0 {
         channel.CurrentSample = channel.Player.GetSample(note.SampleNumber-1)
-        channel.CurrentNote = note
+        // channel.CurrentNote = note
         channel.startPosition = 0
         channel.Volume = 1.0
     }
@@ -192,6 +223,16 @@ func (channel *Channel) UpdateRow() {
                 channel.Player.Speed = int(note.EffectParameter)
             } else if note.EffectParameter >= 0x20 && note.EffectParameter <= 0xff {
                 channel.Player.BPM = int(note.EffectParameter)
+            }
+        case EffectPortamentoUp:
+            channel.CurrentEffect = EffectPortamentoUp
+            channel.CurrentEffectParameter = int(note.EffectParameter)
+        case EffectPortamentoDown:
+            channel.CurrentEffect = EffectPortamentoDown
+            channel.CurrentEffectParameter = int(note.EffectParameter)
+        default:
+            if note.EffectNumber != 0 || note.EffectParameter != 0 {
+                log.Printf("Warning: channel %v unhandled effect %x with parameter %v", channel.ChannelNumber, note.EffectNumber, note.EffectParameter)
             }
     }
 }
@@ -237,8 +278,8 @@ func (channel *Channel) Update(rate float32) error {
 
     channel.AudioBuffer.Lock()
 
-    if channel.CurrentSample != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentNote.PeriodFrequency > 0 {
-        incrementRate := (7159090.5 / float32(channel.CurrentNote.PeriodFrequency * 2)) / float32(channel.Player.SampleRate)
+    if channel.CurrentSample != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 {
+        incrementRate := computeAmigaFrequency(channel.CurrentFrequency) / float32(channel.Player.SampleRate)
 
         // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
 
@@ -315,6 +356,7 @@ func MakePlayer(modfile *ModFile, sampleRate int) *Player {
         Speed: 6,
         BPM: 125,
         CurrentRow: -1,
+        // CurrentOrder: 0xa,
     }
 
     for i := range modfile.Channels {
@@ -352,12 +394,15 @@ func (player *Player) GetNote(channel int) (*Note, int) {
 
 func (player *Player) Update(timeDelta float32) {
     oldRow := player.CurrentRow
+    oldTicks := int(player.ticks)
 
     if player.CurrentRow < 0 {
         player.CurrentRow = 0
     }
 
     player.ticks += timeDelta * float32(player.BPM) * 2 / 5
+    newTicks := int(player.ticks)
+
     if player.ticks >= float32(player.Speed) {
         player.CurrentRow += 1
         player.ticks -= float32(player.Speed)
@@ -375,8 +420,14 @@ func (player *Player) Update(timeDelta float32) {
     }
 
     for _, channel := range player.Channels {
+        changeRow := false
         if oldRow != channel.currentRow {
             channel.UpdateRow()
+            changeRow = true
+        }
+
+        if newTicks != oldTicks {
+            channel.UpdateTick(changeRow, newTicks - oldTicks)
         }
 
         channel.Update(timeDelta)
