@@ -180,12 +180,19 @@ func (channel *Channel) UpdateRow() {
         channel.CurrentSample = channel.Player.GetSample(note.SampleNumber-1)
         channel.CurrentNote = note
         channel.startPosition = 0
+        channel.Volume = 1.0
     }
 
     switch note.EffectNumber {
         case EffectSetVolume:
             volume := min(note.EffectParameter, 64)
             channel.Volume = float32(volume) / 64.0
+        case EffectSetSpeed:
+            if note.EffectParameter >= 0 && note.EffectParameter <= 0x1f {
+                channel.Player.Speed = int(note.EffectParameter)
+            } else if note.EffectParameter >= 0x20 && note.EffectParameter <= 0xff {
+                channel.Player.BPM = int(note.EffectParameter)
+            }
     }
 }
 
@@ -292,10 +299,13 @@ type Player struct {
     SampleRate int
 
     Speed int
+    // beats per minute
+    BPM int
     CurrentOrder int
     CurrentRow int
 
-    rowPosition float32
+    ticks float32
+    // rowPosition float32
 }
 
 func MakePlayer(modfile *ModFile, sampleRate int) *Player {
@@ -303,6 +313,7 @@ func MakePlayer(modfile *ModFile, sampleRate int) *Player {
         ModFile: modfile,
         SampleRate: sampleRate,
         Speed: 6,
+        BPM: 125,
         CurrentRow: -1,
     }
 
@@ -342,17 +353,25 @@ func (player *Player) GetNote(channel int) (*Note, int) {
 func (player *Player) Update(timeDelta float32) {
     oldRow := player.CurrentRow
 
-    player.rowPosition += float32(player.Speed) * timeDelta * 2
-    player.CurrentRow = int(player.rowPosition)
+    if player.CurrentRow < 0 {
+        player.CurrentRow = 0
+    }
+
+    player.ticks += timeDelta * float32(player.BPM) * 2 / 5
+    if player.ticks >= float32(player.Speed) {
+        player.CurrentRow += 1
+        player.ticks -= float32(player.Speed)
+    }
+
     if player.CurrentRow > len(player.ModFile.Patterns[0].Rows) - 1 {
-        player.rowPosition = 0
+        // player.rowPosition = 0
         player.CurrentRow = 0
         player.CurrentOrder += 1
         if player.CurrentOrder >= player.ModFile.SongLength {
             player.CurrentOrder = 0
         }
 
-        log.Printf("next pattern: %v", player.GetPattern())
+        log.Printf("order %v next pattern: %v", player.CurrentOrder, player.GetPattern())
     }
 
     for _, channel := range player.Channels {
