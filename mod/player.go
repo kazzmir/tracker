@@ -230,6 +230,14 @@ func (channel *Channel) UpdateRow() {
         case EffectPortamentoDown:
             channel.CurrentEffect = EffectPortamentoDown
             channel.CurrentEffectParameter = int(note.EffectParameter)
+        case EffectExtra:
+            switch note.EffectParameter >> 4 {
+                // fine volume slide down
+                case 0xb:
+                    channel.Volume = max(channel.Volume - float32(note.EffectParameter & 0xf) / 64.0, 0.0)
+                default:
+                    log.Printf("Warning: channel %v unhandled extra effect %x with parameter %x", channel.ChannelNumber, note.EffectParameter >> 8, note.EffectParameter & 0xf)
+            }
         default:
             if note.EffectNumber != 0 || note.EffectParameter != 0 {
                 log.Printf("Warning: channel %v unhandled effect %x with parameter %v", channel.ChannelNumber, note.EffectNumber, note.EffectParameter)
