@@ -187,6 +187,15 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
                 channel.CurrentFrequency += ticks * channel.CurrentEffectParameter
                 channel.CurrentFrequency = min(channel.CurrentFrequency, 2000)
             }
+        case EffectVolumeSlide:
+            up := channel.CurrentEffectParameter >> 4
+            down := channel.CurrentEffectParameter & 0xf
+
+            if up > 0 {
+                channel.Volume = min(channel.Volume + float32(up) / 64.0, 1.0)
+            } else if down > 0 {
+                channel.Volume = max(channel.Volume - float32(down) / 64.0, 0.0)
+            }
     }
 }
 
@@ -229,6 +238,9 @@ func (channel *Channel) UpdateRow() {
             channel.CurrentEffectParameter = int(note.EffectParameter)
         case EffectPortamentoDown:
             channel.CurrentEffect = EffectPortamentoDown
+            channel.CurrentEffectParameter = int(note.EffectParameter)
+        case EffectVolumeSlide:
+            channel.CurrentEffect = EffectVolumeSlide
             channel.CurrentEffectParameter = int(note.EffectParameter)
         case EffectExtra:
             switch note.EffectParameter >> 4 {
