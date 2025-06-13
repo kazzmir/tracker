@@ -24,6 +24,15 @@ func (buffer *AudioBuffer) Unlock() {
     buffer.lock.Unlock()
 }
 
+func (buffer *AudioBuffer) Clear() {
+    buffer.lock.Lock()
+    defer buffer.lock.Unlock()
+
+    buffer.start = 0
+    buffer.end = 0
+    buffer.count = 0
+}
+
 func (buffer *AudioBuffer) Read(data []float32) int {
     buffer.lock.Lock()
     defer buffer.lock.Unlock()
@@ -53,7 +62,7 @@ func (buffer *AudioBuffer) UnsafeWrite(value float32) {
         buffer.Buffer[buffer.end] = value
         buffer.end = (buffer.end + 1) % len(buffer.Buffer)
     } else {
-        log.Printf("overflow in audio buffer, dropping sample %v", value)
+        // log.Printf("overflow in audio buffer, dropping sample %v", value)
     }
 }
 
@@ -112,8 +121,12 @@ type Channel struct {
     ChannelNumber int
 
     Vibrato Vibrato
+    TonePortamentoTarget int
+    TonePortamentoSpeed int
 
     Volume float32
+
+    Mute bool
 
     buffer []float32
 
@@ -130,6 +143,14 @@ type Channel struct {
 }
 
 func (channel *Channel) Read(data []byte) (int, error) {
+
+    if channel.Mute {
+        for i := 0; i < len(data); i++ {
+            data[i] = 0
+        }
+        channel.AudioBuffer.Clear()
+        return len(data), nil
+    }
 
     samples := len(data) / 4 / 2
 
@@ -222,6 +243,20 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
             } else if down > 0 {
                 channel.Volume = max(channel.Volume - float32(down) / 64.0, 0.0)
             }
+        case EffectTonePortamento:
+            if !changeRow {
+                direction := 1
+                // log.Printf("channel %v Portamento target %v current %v", channel.ChannelNumber, channel.TonePortamentoTarget, channel.CurrentFrequency)
+                if channel.TonePortamentoTarget < channel.CurrentFrequency {
+                    direction = -1
+                }
+                channel.CurrentFrequency += ticks * channel.TonePortamentoSpeed * direction
+                if direction == -1 && channel.CurrentFrequency < channel.TonePortamentoTarget {
+                    channel.CurrentFrequency = channel.TonePortamentoTarget
+                } else if direction == 1 && channel.CurrentFrequency > channel.TonePortamentoTarget {
+                    channel.CurrentFrequency = channel.TonePortamentoTarget
+                }
+            }
         case EffectVibrato:
             if !changeRow {
                 channel.Vibrato.Update()
@@ -246,8 +281,10 @@ func (channel *Channel) UpdateRow() {
         log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
     }
 
+    newFrequency := channel.CurrentFrequency
+
     if note.PeriodFrequency != 0 {
-        channel.CurrentFrequency = int(note.PeriodFrequency)
+        newFrequency = int(note.PeriodFrequency)
     }
 
     // var sample *mod.Sample
@@ -271,6 +308,19 @@ func (channel *Channel) UpdateRow() {
             } else if note.EffectParameter >= 0x20 && note.EffectParameter <= 0xff {
                 channel.Player.BPM = int(note.EffectParameter)
             }
+        case EffectTonePortamento:
+            channel.CurrentEffect = EffectTonePortamento
+            if note.EffectParameter > 0 {
+                channel.CurrentEffectParameter = int(note.EffectParameter)
+                if note.PeriodFrequency != 0 {
+                    channel.TonePortamentoTarget = int(note.PeriodFrequency)
+                }
+                channel.TonePortamentoSpeed = int(note.EffectParameter)
+            }
+
+            // log.Printf("channel %v row Portamento target %v current %v speed %v", channel.ChannelNumber, channel.TonePortamentoTarget, channel.CurrentFrequency, channel.TonePortamentoSpeed)
+
+            newFrequency = channel.CurrentFrequency
         case EffectPortamentoUp:
             channel.CurrentEffect = EffectPortamentoUp
             channel.CurrentEffectParameter = int(note.EffectParameter)
@@ -307,6 +357,8 @@ func (channel *Channel) UpdateRow() {
                 log.Printf("Warning: channel %v unhandled effect %x with parameter %v", channel.ChannelNumber, note.EffectNumber, note.EffectParameter)
             }
     }
+
+    channel.CurrentFrequency = newFrequency
 }
 
 func (channel *Channel) Update(rate float32) error {

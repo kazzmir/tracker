@@ -119,6 +119,13 @@ func main(){
 
     modPlayer := mod.MakePlayer(modFile, sampleRate)
 
+    /*
+    modPlayer.CurrentOrder = 0x10
+    modPlayer.Channels[0].Mute = true
+    modPlayer.Channels[1].Mute = true
+    modPlayer.Channels[3].Mute = true
+    */
+
     engine, err := MakeEngine(modPlayer, audioContext)
     if err != nil {
         log.Printf("Error creating engine: %v", err)
