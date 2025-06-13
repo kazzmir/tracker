@@ -82,10 +82,36 @@ func MakeAudioBuffer(sampleRate int) *AudioBuffer {
     }
 }
 
+type Vibrato struct {
+    Speed int
+    Depth int
+    position int
+}
+
+func (vibrato *Vibrato) Update() {
+    vibrato.position += vibrato.Speed
+    if vibrato.position >= 64 {
+        vibrato.position -= 64
+    }
+}
+
+func (vibrato *Vibrato) Apply(frequency int) int {
+    if vibrato.Depth <= 0 || vibrato.Speed <= 0 {
+        return frequency
+    }
+
+    // Amiga vibrato is a sine wave with a period of 64
+    // and a depth of 8, so we scale the position to that range
+    vibratoValue := int(float64(vibrato.Depth) * math.Sin(float64(vibrato.position) * math.Pi * 360 / 64 / 180))
+    return frequency + vibratoValue
+}
+
 type Channel struct {
     Player *Player
     AudioBuffer *AudioBuffer
     ChannelNumber int
+
+    Vibrato Vibrato
 
     Volume float32
 
@@ -196,6 +222,14 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
             } else if down > 0 {
                 channel.Volume = max(channel.Volume - float32(down) / 64.0, 0.0)
             }
+        case EffectVibrato:
+            if !changeRow {
+                channel.Vibrato.Update()
+            }
+            /*
+            speed := channel.CurrentEffectParameter >> 4
+            depth := channel.CurrentEffectParameter & 0xf
+            */
     }
 }
 
@@ -242,6 +276,20 @@ func (channel *Channel) UpdateRow() {
         case EffectVolumeSlide:
             channel.CurrentEffect = EffectVolumeSlide
             channel.CurrentEffectParameter = int(note.EffectParameter)
+        case EffectVibrato:
+            channel.CurrentEffect = EffectVibrato
+            channel.CurrentEffectParameter = int(note.EffectParameter)
+
+            speed := note.EffectParameter >> 4
+            depth := note.EffectParameter & 0xf
+
+            if speed > 0 {
+                channel.Vibrato.Speed = int(speed)
+            }
+
+            if depth > 0 {
+                channel.Vibrato.Depth = int(depth)
+            }
         case EffectExtra:
             switch note.EffectParameter >> 4 {
                 // fine volume slide down
@@ -299,7 +347,11 @@ func (channel *Channel) Update(rate float32) error {
     channel.AudioBuffer.Lock()
 
     if channel.CurrentSample != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 {
-        incrementRate := computeAmigaFrequency(channel.CurrentFrequency) / float32(channel.Player.SampleRate)
+        frequency := channel.CurrentFrequency
+        if channel.CurrentEffect == EffectVibrato {
+            frequency = channel.Vibrato.Apply(frequency)
+        }
+        incrementRate := computeAmigaFrequency(frequency) / float32(channel.Player.SampleRate)
 
         // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
 
