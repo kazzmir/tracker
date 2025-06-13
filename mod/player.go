@@ -222,6 +222,17 @@ func computeAmigaFrequency(frequency int) float32 {
     return 7159090.5 / float32(frequency * 2)
 }
 
+func (channel *Channel) UpdateVolume() {
+    up := channel.CurrentEffectParameter >> 4
+    down := channel.CurrentEffectParameter & 0xf
+
+    if up > 0 {
+        channel.Volume = min(channel.Volume + float32(up) / 64.0, 1.0)
+    } else if down > 0 {
+        channel.Volume = max(channel.Volume - float32(down) / 64.0, 0.0)
+    }
+}
+
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
     switch channel.CurrentEffect {
         case EffectPortamentoUp:
@@ -234,15 +245,13 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
                 channel.CurrentFrequency += ticks * channel.CurrentEffectParameter
                 channel.CurrentFrequency = min(channel.CurrentFrequency, 2000)
             }
-        case EffectVolumeSlide:
-            up := channel.CurrentEffectParameter >> 4
-            down := channel.CurrentEffectParameter & 0xf
-
-            if up > 0 {
-                channel.Volume = min(channel.Volume + float32(up) / 64.0, 1.0)
-            } else if down > 0 {
-                channel.Volume = max(channel.Volume - float32(down) / 64.0, 0.0)
+        case EffectVibratoAndVolumeSlide:
+            if !changeRow {
+                channel.Vibrato.Update()
+                channel.UpdateVolume()
             }
+        case EffectVolumeSlide:
+            channel.UpdateVolume()
         case EffectTonePortamento:
             if !changeRow {
                 direction := 1
@@ -329,6 +338,9 @@ func (channel *Channel) UpdateRow() {
             channel.CurrentEffectParameter = int(note.EffectParameter)
         case EffectVolumeSlide:
             channel.CurrentEffect = EffectVolumeSlide
+            channel.CurrentEffectParameter = int(note.EffectParameter)
+        case EffectVibratoAndVolumeSlide:
+            channel.CurrentEffect = EffectVibratoAndVolumeSlide
             channel.CurrentEffectParameter = int(note.EffectParameter)
         case EffectVibrato:
             channel.CurrentEffect = EffectVibrato
