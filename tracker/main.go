@@ -64,6 +64,14 @@ func (engine *Engine) Update() error {
         switch key {
             case ebiten.KeyEscape, ebiten.KeyCapsLock:
                 return ebiten.Termination
+            case ebiten.KeySpace:
+                engine.Player.CurrentRow = 0
+            case ebiten.KeyLeft:
+                engine.Player.PreviousOrder()
+                log.Printf("New order: %d", engine.Player.CurrentOrder)
+            case ebiten.KeyRight:
+                engine.Player.NextOrder()
+                log.Printf("New order: %d", engine.Player.CurrentOrder)
         }
     }
 

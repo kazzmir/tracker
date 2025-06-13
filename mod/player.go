@@ -362,7 +362,7 @@ func (channel *Channel) UpdateRow() {
                 case 0xb:
                     channel.Volume = max(channel.Volume - float32(note.EffectParameter & 0xf) / 64.0, 0.0)
                 default:
-                    log.Printf("Warning: channel %v unhandled extra effect %x with parameter %x", channel.ChannelNumber, note.EffectParameter >> 8, note.EffectParameter & 0xf)
+                    log.Printf("Warning: channel %v unhandled extra effect %x with parameter %x", channel.ChannelNumber, note.EffectParameter >> 4, note.EffectParameter & 0xf)
             }
         default:
             if note.EffectNumber != 0 || note.EffectParameter != 0 {
@@ -468,7 +468,7 @@ func MakeChannelVoice(channelNumber int, player *Player) *Channel {
         AudioBuffer: MakeAudioBuffer(player.SampleRate),
         Volume: 1.0,
         buffer: make([]float32, player.SampleRate),
-        currentRow: -1,
+        // currentRow: -1,
     }
 
     return channel
@@ -530,6 +530,22 @@ func (player *Player) GetNote(channel int) (*Note, int) {
     } else {
         return &Note{}, player.CurrentRow
     }
+}
+
+func (player *Player) NextOrder() {
+    player.CurrentOrder += 1
+    if player.CurrentOrder >= player.ModFile.SongLength {
+        player.CurrentOrder = 0
+    }
+    player.CurrentRow = 0
+}
+
+func (player *Player) PreviousOrder() {
+    player.CurrentOrder -= 1
+    if player.CurrentOrder < 0 {
+        player.CurrentOrder = 0
+    }
+    player.CurrentRow = 0
 }
 
 func (player *Player) Update(timeDelta float32) {
