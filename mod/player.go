@@ -102,7 +102,7 @@ func (vibrato *Vibrato) Apply(frequency int) int {
 
     // Amiga vibrato is a sine wave with a period of 64
     // and a depth of 8, so we scale the position to that range
-    vibratoValue := int(float64(vibrato.Depth) * math.Sin(float64(vibrato.position) * math.Pi * 360 / 64 / 180))
+    vibratoValue := int(float64(vibrato.Depth * 2) * math.Sin(float64(vibrato.position) * math.Pi * 360 / 64 / 180))
     return frequency + vibratoValue
 }
 
@@ -236,6 +236,10 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
 func (channel *Channel) UpdateRow() {
     channel.CurrentEffect = 0
     channel.CurrentEffectParameter = 0
+    // FIXME: the default waveform is sine retrig, which should reset the position on each row
+    // but most players don't seem to do this, instead just letting the position be whatever it was
+    // on the last row
+    // channel.Vibrato.position = 0
 
     note, row := channel.Player.GetNote(channel.ChannelNumber)
     if note.SampleNumber != 0 {
