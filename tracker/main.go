@@ -4,6 +4,7 @@ import (
     "os"
     "log"
     "time"
+    "io"
 
     "github.com/kazzmir/tracker/mod"
 
@@ -121,7 +122,14 @@ func main(){
     modPlayer := mod.MakePlayer(modFile, sampleRate)
 
     log.Printf("Rendering to pcm")
-    modPlayer.RenderToPCM()
+    reader := modPlayer.RenderToPCM()
+    out, err := os.Create("output.pcm")
+    if err != nil {
+        log.Printf("Error creating output file: %v", err)
+        return
+    }
+    io.Copy(out, reader)
+    out.Close()
     log.Printf("Done rendering to pcm")
     if 2 > 1 {
         return

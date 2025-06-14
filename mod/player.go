@@ -595,11 +595,110 @@ func (player *Player) Update(timeDelta float32) {
     }
 }
 
-// produce a PCM stream of stereo samples
-func (player *Player) RenderToPCM() io.Reader {
-    for player.OrdersPlayed < player.ModFile.SongLength {
-        player.Update(1.0 / 60)
+type ReaderFunc struct {
+    Func func(data []byte) (int, error)
+}
+
+func (reader *ReaderFunc) Read(data []byte) (int, error) {
+    if reader.Func == nil {
+        return 0, io.EOF
+    }
+    return reader.Func(data)
+}
+
+func copyFloat32(dst []byte, src []float32) int {
+    maxBytes := min(len(dst), len(src) * 4)
+
+    for i := range src {
+        if i * 4 >= maxBytes {
+            return maxBytes
+        }
+
+        bits := math.Float32bits(src[i])
+        dst[i*4+0] = byte(bits)
+        dst[i*4+1] = byte(bits >> 8)
+        dst[i*4+2] = byte(bits >> 16)
+        dst[i*4+3] = byte(bits >> 24)
     }
 
-    return nil
+    return maxBytes
+}
+
+// produce a PCM stream of stereo samples
+func (player *Player) RenderToPCM() io.Reader {
+    // make a buffer to hold 1/60th of a second of audio data, which is 4-bytes per sample
+    // and 1 samples per channel
+    buffer := make([]float32, player.SampleRate / 60)
+    mix := make([]float32, player.SampleRate * 2 / 60)
+    readMusic := make(chan bool)
+    produceMusic := make(chan bool)
+
+    go func(){
+        for player.OrdersPlayed < player.ModFile.SongLength {
+            <-produceMusic
+
+            player.Update(1.0 / 60)
+
+            for i := range mix {
+                mix[i] = 0
+            }
+
+            for chNumber, channel := range player.Channels {
+                amount := channel.AudioBuffer.Read(buffer)
+
+                // log.Printf("Channel %v produced %v samples", chNumber, amount)
+
+                if amount > 0 {
+                    // copy the samples into the mix buffer
+                    for i := range amount {
+                        mix[i*2+0] += buffer[i]
+                        mix[i*2+1] += buffer[i]
+                    }
+                }
+            }
+
+            readMusic <- true
+        }
+    }()
+
+    mixPosition := len(mix)
+    reader := func(data []byte) (int, error) {
+        if len(data) == 0 {
+            return 0, nil
+        }
+
+        if player.OrdersPlayed >= player.ModFile.SongLength {
+            return 0, io.EOF
+        }
+
+        // wait for the music to be produced
+        if mixPosition < len(mix) {
+            part := mix[mixPosition:]
+
+            amount := copyFloat32(data, part)
+
+            /*
+            amount := min(len(data), len(part))
+            copy(data, part[:amount])
+            */
+            mixPosition += amount
+            return amount * 4, nil
+        }
+
+        produceMusic <- true
+        mixPosition = 0
+
+        // wait for the music to be read
+        <-readMusic
+
+        // copy the mix into the data buffer
+        amount := copyFloat32(data, mix)
+        mixPosition += amount
+
+        return amount * 4, nil
+    }
+
+    return &ReaderFunc{
+        Func: reader,
+    }
 }
