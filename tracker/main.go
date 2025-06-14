@@ -5,7 +5,10 @@ import (
     "log"
     "time"
     "io"
+    // for discard
+    // "io/ioutil"
     "flag"
+    "runtime/pprof"
 
     "github.com/kazzmir/tracker/mod"
 
@@ -92,6 +95,7 @@ func (engine *Engine) Layout(outsideWidth, outsideHeight int) (int, int) {
 func main(){
     log.SetFlags(log.Lshortfile | log.Ldate | log.Lmicroseconds)
 
+    profile := flag.Bool("profile", false, "Enable profiling")
     wav := flag.String("wav", "", "Output wav file")
     flag.Parse()
 
@@ -99,6 +103,19 @@ func main(){
         log.Println("Usage: tracker [-wav <output-path>] <path to mod file>")
         return
     }
+
+    if *profile {
+        log.Println("Profiling enabled")
+        f, err := os.Create("profile.out")
+        if err != nil {
+            log.Printf("Error creating profile file: %v", err)
+            return
+        }
+        defer f.Close()
+        pprof.StartCPUProfile(f)
+        defer pprof.StopCPUProfile()
+    }
+
     path := flag.Args()[0]
     file, err := os.Open(path)
     if err != nil {
@@ -128,6 +145,7 @@ func main(){
 
     if *wav != "" {
         log.Printf("Rendering to pcm")
+
         reader := modPlayer.RenderToPCM()
         out, err := os.Create(*wav)
         if err != nil {
@@ -136,7 +154,26 @@ func main(){
         }
         io.Copy(out, reader)
         out.Close()
+
+        /*
+        for range 10 {
+            modPlayer = mod.MakePlayer(modFile, sampleRate)
+            io.Copy(ioutil.Discard, modPlayer.RenderToPCM())
+        }
+        */
+
         log.Printf("Done rendering to pcm")
+
+        if *profile {
+            out, err := os.Create("profile.mem")
+            if err != nil {
+                log.Printf("Could not create heap profile: %v", err)
+            } else {
+                pprof.WriteHeapProfile(out)
+                out.Close()
+            }
+        }
+
     } else {
         ebiten.SetTPS(60)
         ebiten.SetWindowSize(640, 480)

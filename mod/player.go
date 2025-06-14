@@ -288,7 +288,7 @@ func (channel *Channel) UpdateRow() {
 
     note, row := channel.Player.GetNote(channel.ChannelNumber)
     if note.SampleNumber != 0 {
-        log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
+        // log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
     }
 
     newFrequency := channel.CurrentFrequency
@@ -641,37 +641,37 @@ func (player *Player) RenderToPCM() io.Reader {
     rate := 100
     buffer := make([]float32, player.SampleRate / rate)
     mix := make([]float32, player.SampleRate * 2 / rate)
-    readMusic := make(chan bool)
-    produceMusic := make(chan bool)
+    // readMusic := make(chan bool)
+    // produceMusic := make(chan bool)
 
-    go func(){
-        for player.OrdersPlayed < player.ModFile.SongLength {
-            <-produceMusic
+    fillMix := func() bool {
+        if player.OrdersPlayed >= player.ModFile.SongLength {
+            return false
+        }
 
-            player.Update(1.0 / float32(rate))
+        player.Update(1.0 / float32(rate))
 
-            for i := range mix {
-                mix[i] = 0
-            }
+        for i := range mix {
+            mix[i] = 0
+        }
 
-            for _, channel := range player.Channels {
-                amount := channel.AudioBuffer.Read(buffer)
+        for _, channel := range player.Channels {
+            amount := channel.AudioBuffer.Read(buffer)
 
-                // log.Printf("Channel %v produced %v samples", chNumber, amount)
+            // log.Printf("Channel %v produced %v samples", chNumber, amount)
 
-                if amount > 0 {
-                    // copy the samples into the mix buffer
-                    for i := range amount {
-                        // mono to stereo
-                        mix[i*2+0] = clamp(mix[i*2+0] + buffer[i], -1, 1)
-                        mix[i*2+1] = clamp(mix[i*2+1] + buffer[i], -1, 1)
-                    }
+            if amount > 0 {
+                // copy the samples into the mix buffer
+                for i := range amount {
+                    // mono to stereo
+                    mix[i*2+0] = clamp(mix[i*2+0] + buffer[i], -1, 1)
+                    mix[i*2+1] = clamp(mix[i*2+1] + buffer[i], -1, 1)
                 }
             }
-
-            readMusic <- true
         }
-    }()
+
+        return true
+    }
 
     mixPosition := len(mix)
     reader := func(data []byte) (int, error) {
@@ -699,14 +699,15 @@ func (player *Player) RenderToPCM() io.Reader {
             return amount * 4, nil
         }
 
-        produceMusic <- true
         mixPosition = 0
 
-        // wait for the music to be read
-        <-readMusic
+        more := fillMix()
+        if !more {
+            return 0, io.EOF
+        }
 
         // copy the mix into the data buffer
-        log.Printf("Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
+        // log.Printf("Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
         amount := copyFloat32(data, mix)
         mixPosition += amount
 
