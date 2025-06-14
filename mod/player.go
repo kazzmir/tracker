@@ -606,12 +606,13 @@ func (reader *ReaderFunc) Read(data []byte) (int, error) {
     return reader.Func(data)
 }
 
+// returns the number of floats copied
 func copyFloat32(dst []byte, src []float32) int {
     maxBytes := min(len(dst), len(src) * 4)
 
     for i := range src {
         if i * 4 >= maxBytes {
-            return maxBytes
+            return i
         }
 
         bits := math.Float32bits(src[i])
@@ -621,15 +622,16 @@ func copyFloat32(dst []byte, src []float32) int {
         dst[i*4+3] = byte(bits >> 24)
     }
 
-    return maxBytes
+    return len(src)
 }
 
 // produce a PCM stream of stereo samples
 func (player *Player) RenderToPCM() io.Reader {
     // make a buffer to hold 1/60th of a second of audio data, which is 4-bytes per sample
     // and 1 samples per channel
-    buffer := make([]float32, player.SampleRate / 60)
-    mix := make([]float32, player.SampleRate * 2 / 60)
+    rate := 60
+    buffer := make([]float32, player.SampleRate / rate)
+    mix := make([]float32, player.SampleRate * 2 / rate)
     readMusic := make(chan bool)
     produceMusic := make(chan bool)
 
@@ -637,13 +639,13 @@ func (player *Player) RenderToPCM() io.Reader {
         for player.OrdersPlayed < player.ModFile.SongLength {
             <-produceMusic
 
-            player.Update(1.0 / 60)
+            player.Update(1.0 / float32(rate))
 
             for i := range mix {
                 mix[i] = 0
             }
 
-            for chNumber, channel := range player.Channels {
+            for _, channel := range player.Channels {
                 amount := channel.AudioBuffer.Read(buffer)
 
                 // log.Printf("Channel %v produced %v samples", chNumber, amount)
@@ -675,6 +677,8 @@ func (player *Player) RenderToPCM() io.Reader {
         if mixPosition < len(mix) {
             part := mix[mixPosition:]
 
+            log.Printf("Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
+
             amount := copyFloat32(data, part)
 
             /*
@@ -692,6 +696,7 @@ func (player *Player) RenderToPCM() io.Reader {
         <-readMusic
 
         // copy the mix into the data buffer
+        log.Printf("Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
         amount := copyFloat32(data, mix)
         mixPosition += amount
 
