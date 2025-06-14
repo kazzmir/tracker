@@ -625,11 +625,20 @@ func copyFloat32(dst []byte, src []float32) int {
     return len(src)
 }
 
+func clamp(value float32, min float32, max float32) float32 {
+    if value < min {
+        return min
+    } else if value > max {
+        return max
+    }
+    return value
+}
+
 // produce a PCM stream of stereo samples
 func (player *Player) RenderToPCM() io.Reader {
     // make a buffer to hold 1/60th of a second of audio data, which is 4-bytes per sample
     // and 1 samples per channel
-    rate := 60
+    rate := 100
     buffer := make([]float32, player.SampleRate / rate)
     mix := make([]float32, player.SampleRate * 2 / rate)
     readMusic := make(chan bool)
@@ -653,8 +662,9 @@ func (player *Player) RenderToPCM() io.Reader {
                 if amount > 0 {
                     // copy the samples into the mix buffer
                     for i := range amount {
-                        mix[i*2+0] += buffer[i]
-                        mix[i*2+1] += buffer[i]
+                        // mono to stereo
+                        mix[i*2+0] = clamp(mix[i*2+0] + buffer[i], -1, 1)
+                        mix[i*2+1] = clamp(mix[i*2+1] + buffer[i], -1, 1)
                     }
                 }
             }
@@ -677,7 +687,7 @@ func (player *Player) RenderToPCM() io.Reader {
         if mixPosition < len(mix) {
             part := mix[mixPosition:]
 
-            log.Printf("Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
+            log.Printf("Partial Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
 
             amount := copyFloat32(data, part)
 
