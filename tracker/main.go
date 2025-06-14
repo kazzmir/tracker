@@ -9,6 +9,7 @@ import (
     // "io/ioutil"
     "flag"
     "runtime/pprof"
+    "encoding/binary"
 
     "github.com/kazzmir/tracker/mod"
 
@@ -27,37 +28,17 @@ func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, er
     engine := &Engine{
         Player: modPlayer,
         AudioContext: audioContext,
-        // CurrentOrder: 2,
     }
 
-    for i, channel := range modPlayer.Channels {
-        /*
-        if i > 0 {
-            break
+    for _, channel := range modPlayer.Channels {
+        playChannel, err := audioContext.NewPlayerF32(channel)
+        if err != nil {
+            return nil, err
         }
-        */
-
-        if true || i == 3 {
-
-            playChannel, err := audioContext.NewPlayerF32(channel)
-            if err != nil {
-                return nil, err
-            }
-            playChannel.SetBufferSize(time.Second / 8)
-            playChannel.SetVolume(0.3)
-            playChannel.Play()
-        }
-
+        playChannel.SetBufferSize(time.Second / 8)
+        playChannel.SetVolume(0.3)
+        playChannel.Play()
     }
-
-    /*
-    player, err := audioContext.NewPlayerF32(engine)
-    if err != nil {
-        return nil, err
-    }
-    player.SetBufferSize(time.Second / 2)
-    player.Play()
-    */
 
     return engine, nil
 }
@@ -90,6 +71,44 @@ func (engine *Engine) Draw(screen *ebiten.Image) {
 
 func (engine *Engine) Layout(outsideWidth, outsideHeight int) (int, int) {
     return outsideWidth, outsideHeight
+}
+
+func saveToWav(path string, reader io.Reader, sampleRate int) error {
+    outputFile, err := os.Create(path)
+    if err != nil {
+        return err
+    }
+    defer outputFile.Close()
+
+    dataLength := int64(0)
+    bitsPerSample := 32
+    bytePerBloc := 2 * bitsPerSample / 8
+    bytePerSec := sampleRate * bytePerBloc // 2 channels, 32 bits per sample
+
+    binary.Write(outputFile, binary.LittleEndian, []byte("RIFF"))
+    binary.Write(outputFile, binary.LittleEndian, uint32(dataLength + 36))
+    binary.Write(outputFile, binary.LittleEndian, []byte("WAVE"))
+    binary.Write(outputFile, binary.LittleEndian, []byte("fmt "))
+    binary.Write(outputFile, binary.LittleEndian, uint32(16))  // BlocSize
+    binary.Write(outputFile, binary.LittleEndian, uint16(3))   // AudioFormat, IEEE float
+    binary.Write(outputFile, binary.LittleEndian, uint16(2))
+    binary.Write(outputFile, binary.LittleEndian, uint32(sampleRate))
+    binary.Write(outputFile, binary.LittleEndian, uint32(bytePerSec))
+    binary.Write(outputFile, binary.LittleEndian, uint16(bytePerBloc))
+    binary.Write(outputFile, binary.LittleEndian, uint16(bitsPerSample))
+    binary.Write(outputFile, binary.LittleEndian, []byte("data"))
+    binary.Write(outputFile, binary.LittleEndian, uint32(dataLength))
+    dataLength, err = io.Copy(outputFile, reader)
+
+    // now that we know the data length, we can go back and write it in the header
+    outputFile.Seek(4, io.SeekStart)
+    binary.Write(outputFile, binary.LittleEndian, uint32(dataLength + 36))
+    outputFile.Seek(40, io.SeekStart)
+    binary.Write(outputFile, binary.LittleEndian, uint32(dataLength))
+
+    log.Printf("Copied %v bytes to %v", dataLength, path)
+
+    return err
 }
 
 func main(){
@@ -146,6 +165,13 @@ func main(){
     if *wav != "" {
         log.Printf("Rendering to %v", *wav)
 
+        err := saveToWav(*wav, modPlayer.RenderToPCM(), sampleRate)
+        if err != nil {
+            log.Printf("Error saving to wav: %v", err)
+            return
+        }
+
+        /*
         reader := modPlayer.RenderToPCM()
         out, err := os.Create(*wav)
         if err != nil {
@@ -154,6 +180,7 @@ func main(){
         }
         io.Copy(out, reader)
         out.Close()
+        */
 
         /*
         for range 10 {
