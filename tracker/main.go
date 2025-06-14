@@ -144,7 +144,7 @@ func main(){
     modPlayer := mod.MakePlayer(modFile, sampleRate)
 
     if *wav != "" {
-        log.Printf("Rendering to pcm")
+        log.Printf("Rendering to %v", *wav)
 
         reader := modPlayer.RenderToPCM()
         out, err := os.Create(*wav)
@@ -162,7 +162,7 @@ func main(){
         }
         */
 
-        log.Printf("Done rendering to pcm")
+        log.Printf("Done rendering")
 
         if *profile {
             out, err := os.Create("profile.mem")

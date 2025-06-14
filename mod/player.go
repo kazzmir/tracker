@@ -446,23 +446,26 @@ func (channel *Channel) Update(rate float32) error {
 
         // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
 
-
-        for range samples {
-            position := int(channel.startPosition)
-            if position < 0 {
-                break
-            }
-            if position >= len(channel.CurrentSample.Data) || (channel.CurrentSample.LoopLength > 1 && position >= (channel.CurrentSample.LoopStart + channel.CurrentSample.LoopLength) * 2) {
-                if channel.CurrentSample.LoopLength > 1 {
-                    channel.startPosition = float32(channel.CurrentSample.LoopStart * 2)
-                    position = int(channel.startPosition)
-                } else {
+        if incrementRate > 0 {
+            for range samples {
+                position := int(channel.startPosition)
+                /*
+                if position >= len(channel.CurrentSample.Data) {
                     break
                 }
+                */
+                if position >= len(channel.CurrentSample.Data) || (channel.CurrentSample.LoopLength > 1 && position >= (channel.CurrentSample.LoopStart + channel.CurrentSample.LoopLength) * 2) {
+                    if channel.CurrentSample.LoopLength > 1 {
+                        channel.startPosition = float32(channel.CurrentSample.LoopStart * 2)
+                        position = int(channel.startPosition)
+                    } else {
+                        break
+                    }
+                }
+                channel.AudioBuffer.UnsafeWrite(channel.CurrentSample.Data[position] * channel.Volume)
+                channel.startPosition += incrementRate
+                samplesWritten += 1
             }
-            channel.AudioBuffer.UnsafeWrite(channel.CurrentSample.Data[position] * channel.Volume)
-            channel.startPosition += incrementRate
-            samplesWritten += 1
         }
 
         /*
@@ -685,10 +688,14 @@ func (player *Player) RenderToPCM() io.Reader {
                 // copy the samples into the mix buffer
                 for i := range amount {
                     // mono to stereo
-                    mix[i*2+0] = max(min(mix[i*2+0] + buffer[i], 1), -1)
-                    mix[i*2+1] = max(min(mix[i*2+1] + buffer[i], 1), -1)
+                    mix[i*2+0] += buffer[i]
+                    mix[i*2+1] += buffer[i]
                 }
             }
+        }
+
+        for i := range mix {
+            mix[i] = max(min(mix[i], 1), -1)
         }
 
         return true
