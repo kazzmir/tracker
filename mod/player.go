@@ -44,7 +44,22 @@ func (buffer *AudioBuffer) Read(data []float32) int {
         return total
     }
 
-    for i := 0; i < len(data); i++ {
+    index := 0
+    for buffer.count > 0 {
+        limit := buffer.count
+        if buffer.start + buffer.count > len(buffer.Buffer) {
+            limit = len(buffer.Buffer) - buffer.start
+        }
+        limit = min(limit, len(data[index:]))
+        copy(data[index:], buffer.Buffer[buffer.start:buffer.start + limit])
+        buffer.start = (buffer.start + limit) % len(buffer.Buffer)
+        index += limit
+        buffer.count -= limit
+        total += limit
+    }
+
+    /*
+    for i := range len(data) {
         if buffer.count == 0 {
             break
         }
@@ -53,6 +68,7 @@ func (buffer *AudioBuffer) Read(data []float32) int {
         buffer.count -= 1
         total += 1
     }
+    */
 
     return total
 }
@@ -61,7 +77,11 @@ func (buffer *AudioBuffer) UnsafeWrite(value float32) {
     if buffer.count < len(buffer.Buffer) {
         buffer.count += 1
         buffer.Buffer[buffer.end] = value
-        buffer.end = (buffer.end + 1) % len(buffer.Buffer)
+        buffer.end += 1
+        if buffer.end >= len(buffer.Buffer) {
+            buffer.end = 0
+        }
+        // buffer.end = (buffer.end + 1) % len(buffer.Buffer)
     } else {
         // log.Printf("overflow in audio buffer, dropping sample %v", value)
     }
@@ -641,8 +661,6 @@ func (player *Player) RenderToPCM() io.Reader {
     rate := 100
     buffer := make([]float32, player.SampleRate / rate)
     mix := make([]float32, player.SampleRate * 2 / rate)
-    // readMusic := make(chan bool)
-    // produceMusic := make(chan bool)
 
     fillMix := func() bool {
         if player.OrdersPlayed >= player.ModFile.SongLength {
@@ -664,8 +682,8 @@ func (player *Player) RenderToPCM() io.Reader {
                 // copy the samples into the mix buffer
                 for i := range amount {
                     // mono to stereo
-                    mix[i*2+0] = clamp(mix[i*2+0] + buffer[i], -1, 1)
-                    mix[i*2+1] = clamp(mix[i*2+1] + buffer[i], -1, 1)
+                    mix[i*2+0] = max(min(mix[i*2+0] + buffer[i], 1), -1)
+                    mix[i*2+1] = max(min(mix[i*2+1] + buffer[i], 1), -1)
                 }
             }
         }
@@ -687,7 +705,7 @@ func (player *Player) RenderToPCM() io.Reader {
         if mixPosition < len(mix) {
             part := mix[mixPosition:]
 
-            log.Printf("Partial Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
+            // log.Printf("Partial Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
 
             amount := copyFloat32(data, part)
 
