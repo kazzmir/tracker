@@ -117,15 +117,22 @@ func main(){
     // modFile.Patterns[1].Rows[4].Notes = []mod.Note{mod.Note{SampleNumber: 0xd}}
     */
 
+    sampleRate := 44100
+    modPlayer := mod.MakePlayer(modFile, sampleRate)
+
+    log.Printf("Rendering to pcm")
+    modPlayer.RenderToPCM()
+    log.Printf("Done rendering to pcm")
+    if 2 > 1 {
+        return
+    }
+
     ebiten.SetTPS(60)
     ebiten.SetWindowSize(640, 480)
     ebiten.SetWindowTitle("Mod Tracker")
     ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
-    sampleRate := 44100
     audioContext := audio.NewContext(sampleRate)
-
-    modPlayer := mod.MakePlayer(modFile, sampleRate)
 
     /*
     modPlayer.CurrentOrder = 0x10

@@ -4,6 +4,7 @@ import (
     "log"
     "sync"
     "math"
+    "io"
 )
 
 type AudioBuffer struct {
@@ -485,6 +486,9 @@ type Player struct {
     CurrentOrder int
     CurrentRow int
 
+    // count of the orders played
+    OrdersPlayed int
+
     ticks float32
     // rowPosition float32
 }
@@ -568,6 +572,7 @@ func (player *Player) Update(timeDelta float32) {
         // player.rowPosition = 0
         player.CurrentRow = 0
         player.CurrentOrder += 1
+        player.OrdersPlayed += 1
         if player.CurrentOrder >= player.ModFile.SongLength {
             player.CurrentOrder = 0
         }
@@ -588,4 +593,13 @@ func (player *Player) Update(timeDelta float32) {
 
         channel.Update(timeDelta)
     }
+}
+
+// produce a PCM stream of stereo samples
+func (player *Player) RenderToPCM() io.Reader {
+    for player.OrdersPlayed < player.ModFile.SongLength {
+        player.Update(1.0 / 60)
+    }
+
+    return nil
 }
