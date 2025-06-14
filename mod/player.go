@@ -662,7 +662,7 @@ func clamp(value float32, min float32, max float32) float32 {
 
 // produce a PCM stream of stereo samples
 func (player *Player) RenderToPCM() io.Reader {
-    // make a buffer to hold 1/60th of a second of audio data, which is 4-bytes per sample
+    // make a buffer to hold 1/100th of a second of audio data, which is 4-bytes per sample
     // and 1 samples per channel
     rate := 100
     buffer := make([]float32, player.SampleRate / rate)
