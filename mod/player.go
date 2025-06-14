@@ -686,16 +686,19 @@ func (player *Player) RenderToPCM() io.Reader {
 
             if amount > 0 {
                 // copy the samples into the mix buffer
+                normalizer := float32(len(player.Channels))
                 for i := range amount {
                     // mono to stereo
-                    mix[i*2+0] += buffer[i]
-                    mix[i*2+1] += buffer[i]
+                    mixed := mix[i*2+0] + buffer[i] / normalizer
+                    mix[i*2+0] = mixed
+                    mix[i*2+1] = mixed
                 }
             }
         }
 
         for i := range mix {
             mix[i] = max(min(mix[i], 1), -1)
+            // mix[i] = float32(math.Tanh(float64(mix[i])))
         }
 
         return true
