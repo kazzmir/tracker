@@ -5,6 +5,7 @@ import (
     "log"
     "time"
     "io"
+    "flag"
 
     "github.com/kazzmir/tracker/mod"
 
@@ -90,11 +91,15 @@ func (engine *Engine) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 func main(){
     log.SetFlags(log.Lshortfile | log.Ldate | log.Lmicroseconds)
-    if len(os.Args) < 2 {
-        log.Println("Usage: tracker <path to mod file>")
+
+    wav := flag.String("wav", "", "Output wav file")
+    flag.Parse()
+
+    if len(flag.Args()) == 0 {
+        log.Println("Usage: tracker [-wav <output-path>] <path to mod file>")
         return
     }
-    path := os.Args[1]
+    path := flag.Args()[0]
     file, err := os.Open(path)
     if err != nil {
         log.Printf("Error opening %v: %v", path, err)
@@ -121,42 +126,41 @@ func main(){
     sampleRate := 44100
     modPlayer := mod.MakePlayer(modFile, sampleRate)
 
-    log.Printf("Rendering to pcm")
-    reader := modPlayer.RenderToPCM()
-    out, err := os.Create("output.pcm")
-    if err != nil {
-        log.Printf("Error creating output file: %v", err)
-        return
-    }
-    io.Copy(out, reader)
-    out.Close()
-    log.Printf("Done rendering to pcm")
-    if 2 > 1 {
-        return
-    }
+    if *wav != "" {
+        log.Printf("Rendering to pcm")
+        reader := modPlayer.RenderToPCM()
+        out, err := os.Create(*wav)
+        if err != nil {
+            log.Printf("Error creating output file: %v", err)
+            return
+        }
+        io.Copy(out, reader)
+        out.Close()
+        log.Printf("Done rendering to pcm")
+    } else {
+        ebiten.SetTPS(60)
+        ebiten.SetWindowSize(640, 480)
+        ebiten.SetWindowTitle("Mod Tracker")
+        ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
-    ebiten.SetTPS(60)
-    ebiten.SetWindowSize(640, 480)
-    ebiten.SetWindowTitle("Mod Tracker")
-    ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+        audioContext := audio.NewContext(sampleRate)
 
-    audioContext := audio.NewContext(sampleRate)
+        /*
+        modPlayer.CurrentOrder = 0x10
+        modPlayer.Channels[0].Mute = true
+        modPlayer.Channels[1].Mute = true
+        modPlayer.Channels[3].Mute = true
+        */
 
-    /*
-    modPlayer.CurrentOrder = 0x10
-    modPlayer.Channels[0].Mute = true
-    modPlayer.Channels[1].Mute = true
-    modPlayer.Channels[3].Mute = true
-    */
+        engine, err := MakeEngine(modPlayer, audioContext)
+        if err != nil {
+            log.Printf("Error creating engine: %v", err)
+            return
+        }
 
-    engine, err := MakeEngine(modPlayer, audioContext)
-    if err != nil {
-        log.Printf("Error creating engine: %v", err)
-        return
-    }
-
-    err = ebiten.RunGame(engine)
-    if err != nil {
-        log.Printf("Error: %v", err)
+        err = ebiten.RunGame(engine)
+        if err != nil {
+            log.Printf("Error: %v", err)
+        }
     }
 }
