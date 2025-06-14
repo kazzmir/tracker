@@ -44,8 +44,10 @@ func (buffer *AudioBuffer) Read(data []float32) int {
         return total
     }
 
+    // using copy() is much faster than a for loop, so we copy ranges of bytes out of the
+    // ring buffer
     index := 0
-    for buffer.count > 0 {
+    for buffer.count > 0 && index < len(data) {
         limit := buffer.count
         if buffer.start + buffer.count > len(buffer.Buffer) {
             limit = len(buffer.Buffer) - buffer.start
@@ -645,6 +647,7 @@ func copyFloat32(dst []byte, src []float32) int {
     return len(src)
 }
 
+// using this function turns out to be quite slow, its faster to use min/max
 func clamp(value float32, min float32, max float32) float32 {
     if value < min {
         return min
