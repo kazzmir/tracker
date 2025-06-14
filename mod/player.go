@@ -4,6 +4,7 @@ import (
     "log"
     "sync"
     "math"
+    "io"
 )
 
 type AudioBuffer struct {
@@ -43,7 +44,24 @@ func (buffer *AudioBuffer) Read(data []float32) int {
         return total
     }
 
-    for i := 0; i < len(data); i++ {
+    // using copy() is much faster than a for loop, so we copy ranges of bytes out of the
+    // ring buffer
+    index := 0
+    for buffer.count > 0 && index < len(data) {
+        limit := buffer.count
+        if buffer.start + buffer.count > len(buffer.Buffer) {
+            limit = len(buffer.Buffer) - buffer.start
+        }
+        limit = min(limit, len(data[index:]))
+        copy(data[index:], buffer.Buffer[buffer.start:buffer.start + limit])
+        buffer.start = (buffer.start + limit) % len(buffer.Buffer)
+        index += limit
+        buffer.count -= limit
+        total += limit
+    }
+
+    /*
+    for i := range len(data) {
         if buffer.count == 0 {
             break
         }
@@ -52,6 +70,7 @@ func (buffer *AudioBuffer) Read(data []float32) int {
         buffer.count -= 1
         total += 1
     }
+    */
 
     return total
 }
@@ -60,7 +79,11 @@ func (buffer *AudioBuffer) UnsafeWrite(value float32) {
     if buffer.count < len(buffer.Buffer) {
         buffer.count += 1
         buffer.Buffer[buffer.end] = value
-        buffer.end = (buffer.end + 1) % len(buffer.Buffer)
+        buffer.end += 1
+        if buffer.end >= len(buffer.Buffer) {
+            buffer.end = 0
+        }
+        // buffer.end = (buffer.end + 1) % len(buffer.Buffer)
     } else {
         // log.Printf("overflow in audio buffer, dropping sample %v", value)
     }
@@ -287,7 +310,7 @@ func (channel *Channel) UpdateRow() {
 
     note, row := channel.Player.GetNote(channel.ChannelNumber)
     if note.SampleNumber != 0 {
-        log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
+        // log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
     }
 
     newFrequency := channel.CurrentFrequency
@@ -423,23 +446,26 @@ func (channel *Channel) Update(rate float32) error {
 
         // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
 
-
-        for range samples {
-            position := int(channel.startPosition)
-            if position < 0 {
-                break
-            }
-            if position >= len(channel.CurrentSample.Data) || (channel.CurrentSample.LoopLength > 1 && position >= (channel.CurrentSample.LoopStart + channel.CurrentSample.LoopLength) * 2) {
-                if channel.CurrentSample.LoopLength > 1 {
-                    channel.startPosition = float32(channel.CurrentSample.LoopStart * 2)
-                    position = int(channel.startPosition)
-                } else {
+        if incrementRate > 0 {
+            for range samples {
+                position := int(channel.startPosition)
+                /*
+                if position >= len(channel.CurrentSample.Data) {
                     break
                 }
+                */
+                if position >= len(channel.CurrentSample.Data) || (channel.CurrentSample.LoopLength > 1 && position >= (channel.CurrentSample.LoopStart + channel.CurrentSample.LoopLength) * 2) {
+                    if channel.CurrentSample.LoopLength > 1 {
+                        channel.startPosition = float32(channel.CurrentSample.LoopStart * 2)
+                        position = int(channel.startPosition)
+                    } else {
+                        break
+                    }
+                }
+                channel.AudioBuffer.UnsafeWrite(channel.CurrentSample.Data[position] * channel.Volume)
+                channel.startPosition += incrementRate
+                samplesWritten += 1
             }
-            channel.AudioBuffer.UnsafeWrite(channel.CurrentSample.Data[position] * channel.Volume)
-            channel.startPosition += incrementRate
-            samplesWritten += 1
         }
 
         /*
@@ -484,6 +510,9 @@ type Player struct {
     BPM int
     CurrentOrder int
     CurrentRow int
+
+    // count of the orders played
+    OrdersPlayed int
 
     ticks float32
     // rowPosition float32
@@ -568,6 +597,7 @@ func (player *Player) Update(timeDelta float32) {
         // player.rowPosition = 0
         player.CurrentRow = 0
         player.CurrentOrder += 1
+        player.OrdersPlayed += 1
         if player.CurrentOrder >= player.ModFile.SongLength {
             player.CurrentOrder = 0
         }
@@ -587,5 +617,135 @@ func (player *Player) Update(timeDelta float32) {
         }
 
         channel.Update(timeDelta)
+    }
+}
+
+type ReaderFunc struct {
+    Func func(data []byte) (int, error)
+}
+
+func (reader *ReaderFunc) Read(data []byte) (int, error) {
+    if reader.Func == nil {
+        return 0, io.EOF
+    }
+    return reader.Func(data)
+}
+
+// returns the number of floats copied
+func copyFloat32(dst []byte, src []float32) int {
+    maxBytes := min(len(dst), len(src) * 4)
+
+    for i := range src {
+        if i * 4 >= maxBytes {
+            return i
+        }
+
+        bits := math.Float32bits(src[i])
+        dst[i*4+0] = byte(bits)
+        dst[i*4+1] = byte(bits >> 8)
+        dst[i*4+2] = byte(bits >> 16)
+        dst[i*4+3] = byte(bits >> 24)
+    }
+
+    return len(src)
+}
+
+// using this function turns out to be quite slow, its faster to use min/max
+func clamp(value float32, min float32, max float32) float32 {
+    if value < min {
+        return min
+    } else if value > max {
+        return max
+    }
+    return value
+}
+
+// produce a PCM stream of stereo samples
+func (player *Player) RenderToPCM() io.Reader {
+    // make a buffer to hold 1/100th of a second of audio data, which is 4-bytes per sample
+    // and 1 samples per channel
+    rate := 100
+    buffer := make([]float32, player.SampleRate / rate)
+    mix := make([]float32, player.SampleRate * 2 / rate)
+
+    fillMix := func() bool {
+        if player.OrdersPlayed >= player.ModFile.SongLength {
+            return false
+        }
+
+        player.Update(1.0 / float32(rate))
+
+        for i := range mix {
+            mix[i] = 0
+        }
+
+        for _, channel := range player.Channels {
+            amount := channel.AudioBuffer.Read(buffer)
+
+            // log.Printf("Channel %v produced %v samples", chNumber, amount)
+
+            if amount > 0 {
+                // copy the samples into the mix buffer
+                normalizer := float32(len(player.Channels))
+                for i := range amount {
+                    // mono to stereo
+                    mixed := mix[i*2+0] + buffer[i] / normalizer
+                    mix[i*2+0] = mixed
+                    mix[i*2+1] = mixed
+                }
+            }
+        }
+
+        for i := range mix {
+            mix[i] = max(min(mix[i], 1), -1)
+            // mix[i] = float32(math.Tanh(float64(mix[i])))
+        }
+
+        return true
+    }
+
+    mixPosition := len(mix)
+    reader := func(data []byte) (int, error) {
+        if len(data) == 0 {
+            return 0, nil
+        }
+
+        if player.OrdersPlayed >= player.ModFile.SongLength {
+            return 0, io.EOF
+        }
+
+        // wait for the music to be produced
+        if mixPosition < len(mix) {
+            part := mix[mixPosition:]
+
+            // log.Printf("Partial Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
+
+            amount := copyFloat32(data, part)
+
+            /*
+            amount := min(len(data), len(part))
+            copy(data, part[:amount])
+            */
+            mixPosition += amount
+            return amount * 4, nil
+        }
+
+        mixPosition = 0
+
+        more := fillMix()
+        if !more {
+            return 0, io.EOF
+        }
+
+        // copy the mix into the data buffer
+        // log.Printf("Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
+        amount := copyFloat32(data, mix)
+        mixPosition += amount
+
+        return amount * 4, nil
+    }
+
+    return &ReaderFunc{
+        Func: reader,
     }
 }
