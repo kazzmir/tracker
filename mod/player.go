@@ -148,6 +148,7 @@ type Channel struct {
     TonePortamentoSpeed int
     ArpeggioBase int
     ArpeggioTicks int
+    Delay int
 
     SampleOffset int
 
@@ -278,6 +279,10 @@ func addSemitones(frequency int, semitones int) int {
 }
 
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
+    if channel.Delay > 0 {
+        channel.Delay -= ticks
+    }
+
     switch channel.CurrentEffect {
         case EffectPortamentoUp:
             if !changeRow {
@@ -436,8 +441,13 @@ func (channel *Channel) UpdateRow() {
         case EffectExtra:
             switch note.EffectParameter >> 4 {
                 // fine volume slide down
+                case 2:
+                    // set hardware filter, ignore
                 case 0xb:
                     channel.Volume = max(channel.Volume - float32(note.EffectParameter & 0xf) / 64.0, 0.0)
+                case 0xd:
+                    // delay playing the sample
+                    channel.Delay = int(note.EffectParameter & 0xf)
                 default:
                     log.Printf("Warning: channel %v unhandled extra effect %x with parameter %x", channel.ChannelNumber, note.EffectParameter >> 4, note.EffectParameter & 0xf)
             }
@@ -496,7 +506,7 @@ func (channel *Channel) Update(rate float32) error {
 
     channel.AudioBuffer.Lock()
 
-    if channel.CurrentSample != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 {
+    if channel.CurrentSample != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
         frequency := channel.CurrentFrequency
         if channel.CurrentEffect == EffectVibrato {
             frequency = channel.Vibrato.Apply(frequency)
