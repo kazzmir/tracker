@@ -149,6 +149,8 @@ type Channel struct {
     ArpeggioBase int
     ArpeggioTicks int
 
+    SampleOffset int
+
     Volume float32
 
     Mute bool
@@ -438,6 +440,11 @@ func (channel *Channel) UpdateRow() {
                     channel.Volume = max(channel.Volume - float32(note.EffectParameter & 0xf) / 64.0, 0.0)
                 default:
                     log.Printf("Warning: channel %v unhandled extra effect %x with parameter %x", channel.ChannelNumber, note.EffectParameter >> 4, note.EffectParameter & 0xf)
+            }
+        case EffectSampleOffset:
+            if note.EffectParameter > 0 {
+                channel.SampleOffset = int(note.EffectParameter)
+                channel.startPosition = float32(channel.SampleOffset) * 0x100
             }
         default:
             if note.EffectNumber != 0 || note.EffectParameter != 0 {
