@@ -21,6 +21,7 @@ import (
     "github.com/hajimehoshi/ebiten/v2/inpututil"
     "github.com/hajimehoshi/ebiten/v2/audio"
     "github.com/hajimehoshi/ebiten/v2/text/v2"
+    "github.com/hajimehoshi/ebiten/v2/vector"
 
     "github.com/ebitenui/ebitenui"
     "github.com/ebitenui/ebitenui/widget"
@@ -46,6 +47,36 @@ func loadFont(size float64) (text.Face, error) {
         Source: source,
         Size: size,
     }, nil
+}
+
+func lighten(col color.Color, amount int) color.Color {
+    return col
+}
+
+func makeNineImage(img *ebiten.Image, border int) *ui_image.NineSlice {
+    width := img.Bounds().Dx()
+    return ui_image.NewNineSliceSimple(img, border, width - border * 2)
+}
+
+func makeRoundedButtonImage(width int, height int, border int, col color.Color) *ebiten.Image {
+    img := ebiten.NewImage(width, height)
+
+    vector.DrawFilledRect(img, float32(border), 0, float32(width - border * 2), float32(height), col, true)
+    vector.DrawFilledRect(img, 0, float32(border), float32(width), float32(height - border * 2), col, true)
+    vector.DrawFilledCircle(img, float32(border), float32(border), float32(border), col, true)
+    vector.DrawFilledCircle(img, float32(width-border), float32(border), float32(border), col, true)
+    vector.DrawFilledCircle(img, float32(border), float32(height-border), float32(border), col, true)
+    vector.DrawFilledCircle(img, float32(width-border), float32(height-border), float32(border), col, true)
+
+    return img
+}
+
+func makeNineRoundedButtonImage(width int, height int, border int, col color.Color) *widget.ButtonImage {
+    return &widget.ButtonImage{
+        Idle: makeNineImage(makeRoundedButtonImage(width, height, border, col), border),
+        Hover: makeNineImage(makeRoundedButtonImage(width, height, border, lighten(col, 50)), border),
+        Pressed: makeNineImage(makeRoundedButtonImage(width, height, border, lighten(col, 20)), border),
+    }
 }
 
 func makeUI(engine *Engine) *ebitenui.UI {
@@ -80,6 +111,10 @@ func makeUI(engine *Engine) *ebitenui.UI {
         )),
     )
 
+    rows.AddChild(widget.NewText(
+        widget.TextOpts.Text(".", face, color.White),
+    ))
+
     for i := range 64 {
         textColor := color.RGBA{R: 255, G: 255, B: 255, A: 255}
         if (i + 1) % 4 == 0 {
@@ -110,14 +145,62 @@ func makeUI(engine *Engine) *ebitenui.UI {
             widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
         ))
 
+        /*
+        noteList := widget.NewList(
+            widget.ListOpts.EntryFontFace(face),
+            widget.ListOpts.EntryLabelFunc(
+                func (e any) string {
+                    s := e.(string)
+                    return s
+                },
+            ),
+            widget.ListOpts.HideHorizontalSlider(),
+            widget.ListOpts.HideVerticalSlider(),
+            widget.ListOpts.ContainerOpts(widget.ContainerOpts.WidgetOpts(
+                widget.WidgetOpts.LayoutData(widget.RowLayoutData{
+                    Stretch: true,
+                }),
+            )),
+            widget.ListOpts.SliderOpts(
+                widget.SliderOpts.Images(
+                    &widget.SliderTrackImage{
+                        Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 96, G: 0, B: 0, A: 255}),
+                        Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 164, G: 0, B: 0, A: 255}),
+                    },
+                    makeNineRoundedButtonImage(20, 20, 5, color.NRGBA{R: 128, G: 0, B: 0, A: 255}),
+                ),
+            ),
+            widget.ListOpts.EntrySelectedHandler(func (args *widget.ListEntrySelectedEventArgs) {
+            }),
+            widget.ListOpts.EntryColor(&widget.ListEntryColor{
+                Selected: color.NRGBA{R: 255, G: 255, B: 255, A: 255},
+                Unselected: color.NRGBA{R: 128, G: 128, B: 128, A: 255},
+            }),
+            widget.ListOpts.ScrollContainerOpts(
+                widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
+                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
+                    Disabled: ui_image.NewNineSliceColor(color.NRGBA{R: 5, G: 5, B: 5, A: 255}),
+                    Mask: ui_image.NewNineSliceColor(color.White),
+                }),
+            ),
+        )
+        */
+
         for row := range 64 {
             note := engine.Player.GetRowNote(i, row)
+            name := "..."
             if note.PeriodFrequency > 0 {
-                channel.AddChild(widget.NewText(
-                    widget.TextOpts.Text(fmt.Sprintf("%v", note.PeriodFrequency), face, color.White),
-                ))
+                name = fmt.Sprintf("%v", note.PeriodFrequency)
+                // noteList.AddEntry(name)
             }
+
+            channel.AddChild(widget.NewText(
+                widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
+                widget.TextOpts.Text(name, face, color.White),
+            ))
         }
+
+        // channel.AddChild(noteList)
 
         channels.AddChild(channel)
     }
@@ -315,7 +398,7 @@ func main(){
 
     } else {
         ebiten.SetTPS(60)
-        ebiten.SetWindowSize(640, 480)
+        ebiten.SetWindowSize(800, 800)
         ebiten.SetWindowTitle("Mod Tracker")
         ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
