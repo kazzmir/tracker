@@ -436,6 +436,8 @@ func (channel *Channel) UpdateRow() {
         case EffectVibratoAndVolumeSlide:
             channel.CurrentEffect = EffectVibratoAndVolumeSlide
             channel.CurrentEffectParameter = int(note.EffectParameter)
+        case EffectPositionJump:
+            channel.Player.SetOrder(int(note.EffectParameter))
         case EffectPatternBreak:
             channel.Player.NextOrder()
             value := int(note.EffectParameter >> 4) * 10 + int(note.EffectParameter & 0xf)
@@ -652,6 +654,16 @@ func (player *Player) GetNote(channel int) (*Note, int) {
     } else {
         return &Note{}, player.CurrentRow
     }
+}
+
+func (player *Player) SetOrder(order int) {
+    if order >= player.ModFile.SongLength {
+        order = 0
+    }
+
+    player.CurrentRow = 0
+    player.CurrentOrder = order
+    player.ticks = 0
 }
 
 func (player *Player) NextOrder() {
