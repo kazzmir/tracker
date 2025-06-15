@@ -150,6 +150,8 @@ type Channel struct {
     ArpeggioTicks int
     Delay int
 
+    VolumeCutTick int
+
     SampleOffset int
 
     Volume float32
@@ -297,6 +299,10 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
         channel.Delay -= ticks
     }
 
+    if channel.VolumeCutTick > 0 && ticks == channel.VolumeCutTick {
+        channel.Volume = 0
+    }
+
     switch channel.CurrentEffect {
         case EffectPortamentoUp:
             if !changeRow {
@@ -365,6 +371,7 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
 func (channel *Channel) UpdateRow() {
     channel.CurrentEffect = 0
     channel.CurrentEffectParameter = 0
+    channel.VolumeCutTick = 0
     // FIXME: the default waveform is sine retrig, which should reset the position on each row
     // but most players don't seem to do this, instead just letting the position be whatever it was
     // on the last row
@@ -471,6 +478,8 @@ func (channel *Channel) UpdateRow() {
                 case 0xb:
                     // fine volume slide down
                     channel.Volume = max(channel.Volume - float32(note.EffectParameter & 0xf) / 64.0, 0.0)
+                case 0xc:
+                    channel.VolumeCutTick = int(note.EffectParameter & 0xf)
                 case 0xd:
                     // delay playing the sample
                     channel.Delay = int(note.EffectParameter & 0xf)

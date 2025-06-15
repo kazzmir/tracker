@@ -5,6 +5,7 @@ import (
     "bytes"
     "log"
     "fmt"
+    "bufio"
 )
 
 type Effect byte
@@ -84,16 +85,16 @@ func readByte(reader io.Reader) (byte, error) {
     return buf[0], nil
 }
 
-func Load(reader io.ReadSeeker) (*ModFile, error) {
+func Load(reader_ io.ReadSeeker) (*ModFile, error) {
     var err error
 
-    _, err = reader.Seek(0x438, io.SeekStart)
+    _, err = reader_.Seek(0x438, io.SeekStart)
     if err != nil {
         return nil, err
     }
 
     kind := make([]byte, 4)
-    _, err = io.ReadFull(reader, kind)
+    _, err = io.ReadFull(reader_, kind)
     if err != nil {
         return nil, err
     }
@@ -116,10 +117,12 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
         return nil, fmt.Errorf("Not a mod file: %v '%v'", kind, string(kind))
     }
 
-    _, err = reader.Seek(0, io.SeekStart)
+    _, err = reader_.Seek(0, io.SeekStart)
     if err != nil {
         return nil, err
     }
+
+    reader := bufio.NewReader(reader_)
 
     name := make([]byte, 20)
     _, err = io.ReadFull(reader, name)
@@ -204,8 +207,10 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
     // read mod kind again
     io.ReadFull(reader, kind)
 
+    /*
     position, err := reader.Seek(0, io.SeekCurrent)
     log.Printf("Position before patterns: %v", position)
+    */
 
     // read patterns
     // a pattern consists of 64 rows where each row contains 'channels' number of notes
@@ -247,8 +252,10 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
         })
     }
 
+    /*
     position, err = reader.Seek(0, io.SeekCurrent)
     log.Printf("Before sample data: %v", position)
+    */
 
     // read sample data
     for i := range 31 {
@@ -274,6 +281,7 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
         samples[i].Data = data
     }
 
+    /*
     position, err = reader.Seek(0, io.SeekCurrent)
     log.Printf("Position after sample data is now %v", position)
 
@@ -283,6 +291,7 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
     if position != end {
         log.Printf("  extra bytes!!")
     }
+    */
 
     rest, err := readByte(reader)
     if err == nil {
