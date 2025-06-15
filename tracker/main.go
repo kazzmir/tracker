@@ -73,6 +73,25 @@ func makeUI(engine *Engine) *ebitenui.UI {
         )),
     )
 
+    rows := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+            widget.RowLayoutOpts.Spacing(2),
+        )),
+    )
+
+    for i := range 64 {
+        textColor := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+        if (i + 1) % 4 == 0 {
+            textColor = color.RGBA{R: 200, G: 200, B: 0, A: 255}
+        }
+        rows.AddChild(widget.NewText(
+            widget.TextOpts.Text(fmt.Sprintf("%02X", i), face, textColor),
+        ))
+    }
+
+    channels.AddChild(rows)
+
     for i := range engine.Player.Channels {
         background := color.NRGBA{R: 64, G: 64, B: 64, A: 255}
         if i % 2 == 0 {
