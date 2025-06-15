@@ -3,8 +3,11 @@ package main
 import (
     "os"
     "log"
+    "fmt"
     "time"
     "io"
+    "bytes"
+    _ "embed"
     // for discard
     // "io/ioutil"
     "flag"
@@ -17,11 +20,15 @@ import (
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/inpututil"
     "github.com/hajimehoshi/ebiten/v2/audio"
+    "github.com/hajimehoshi/ebiten/v2/text/v2"
 
     "github.com/ebitenui/ebitenui"
     "github.com/ebitenui/ebitenui/widget"
     ui_image "github.com/ebitenui/ebitenui/image"
 )
+
+//go:embed futura.ttf
+var FuturaTTF []byte
 
 type Engine struct {
     Player *mod.Player
@@ -29,10 +36,65 @@ type Engine struct {
     UI *ebitenui.UI
 }
 
+func loadFont(size float64) (text.Face, error) {
+    source, err := text.NewGoTextFaceSource(bytes.NewReader(FuturaTTF))
+    if err != nil {
+        return nil, err
+    }
+
+    return &text.GoTextFace{
+        Source: source,
+        Size: size,
+    }, nil
+}
+
 func makeUI(engine *Engine) *ebitenui.UI {
+    face, _ := loadFont(19)
+
     rootContainer := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+            widget.RowLayoutOpts.Spacing(2),
+        )),
         widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
     )
+
+    rootContainer.AddChild(widget.NewContainer(
+        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 128, G: 128, B: 128, A: 255})),
+        widget.ContainerOpts.WidgetOpts(
+            widget.WidgetOpts.MinSize(1000, 100),
+        ),
+    ))
+
+    channels := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+            widget.RowLayoutOpts.Spacing(2),
+        )),
+    )
+
+    for i := range engine.Player.Channels {
+        background := color.NRGBA{R: 64, G: 64, B: 64, A: 255}
+        if i % 2 == 0 {
+            background = color.NRGBA{R: 96, G: 96, B: 96, A: 255}
+        }
+
+        channel := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                widget.RowLayoutOpts.Spacing(2),
+            )),
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(background)),
+        )
+
+        channel.AddChild(widget.NewText(
+            widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
+        ))
+
+        channels.AddChild(channel)
+    }
+
+    rootContainer.AddChild(channels)
 
     ui := ebitenui.UI{
         Container: rootContainer,
