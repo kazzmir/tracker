@@ -110,6 +110,15 @@ func makeUI(engine *Engine) *ebitenui.UI {
             widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
         ))
 
+        for row := range 64 {
+            note := engine.Player.GetRowNote(i, row)
+            if note.PeriodFrequency > 0 {
+                channel.AddChild(widget.NewText(
+                    widget.TextOpts.Text(fmt.Sprintf("%v", note.PeriodFrequency), face, color.White),
+                ))
+            }
+        }
+
         channels.AddChild(channel)
     }
 

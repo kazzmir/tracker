@@ -654,6 +654,17 @@ func (player *Player) GetPattern() int {
     return int(player.ModFile.Orders[player.CurrentOrder])
 }
 
+func (player *Player) GetRowNote(channel int, rowNumber int) *Note {
+    pattern := player.GetPattern()
+    row := &player.ModFile.Patterns[pattern].Rows[rowNumber]
+
+    if channel < len(row.Notes) {
+        return &row.Notes[channel]
+    }
+
+    return &Note{}
+}
+
 func (player *Player) GetNote(channel int) (*Note, int) {
     pattern := player.GetPattern()
     row := &player.ModFile.Patterns[pattern].Rows[player.CurrentRow]
