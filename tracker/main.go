@@ -31,10 +31,15 @@ import (
 //go:embed futura.ttf
 var FuturaTTF []byte
 
+type UIHooks struct {
+    UpdateRow func(int)
+}
+
 type Engine struct {
     Player *mod.Player
     AudioContext *audio.Context
     UI *ebitenui.UI
+    UIHooks UIHooks
 }
 
 func loadFont(size float64) (text.Face, error) {
@@ -79,7 +84,7 @@ func makeNineRoundedButtonImage(width int, height int, border int, col color.Col
     }
 }
 
-func makeUI(engine *Engine) *ebitenui.UI {
+func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
     face, _ := loadFont(19)
 
     rootContainer := widget.NewContainer(
@@ -100,7 +105,7 @@ func makeUI(engine *Engine) *ebitenui.UI {
     channels := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
             widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
-            widget.RowLayoutOpts.Spacing(2),
+            widget.RowLayoutOpts.Spacing(8),
         )),
     )
 
@@ -112,17 +117,55 @@ func makeUI(engine *Engine) *ebitenui.UI {
     )
 
     rows.AddChild(widget.NewText(
-        widget.TextOpts.Text(".", face, color.White),
+        widget.TextOpts.Text(" ", face, color.White),
     ))
+
+    var rowContainers [][]*widget.Container
 
     for i := range 64 {
         textColor := color.RGBA{R: 255, G: 255, B: 255, A: 255}
         if (i + 1) % 4 == 0 {
             textColor = color.RGBA{R: 200, G: 200, B: 0, A: 255}
         }
+        /*
         rows.AddChild(widget.NewText(
             widget.TextOpts.Text(fmt.Sprintf("%02X", i), face, textColor),
         ))
+        */
+
+        var container *widget.Container
+        /*
+        if i == 3 {
+            container = widget.NewContainer(
+                widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128})),
+                widget.ContainerOpts.Layout(widget.NewRowLayout(
+                    widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                    widget.RowLayoutOpts.Spacing(2),
+                )),
+            )
+        } else {
+            container = widget.NewContainer(
+                widget.ContainerOpts.Layout(widget.NewRowLayout(
+                    widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                    widget.RowLayoutOpts.Spacing(2),
+                )),
+            )
+        }
+        */
+        container = widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                widget.RowLayoutOpts.Spacing(2),
+            )),
+        )
+
+        rowContainers = append(rowContainers, []*widget.Container{container})
+
+        container.AddChild(widget.NewText(
+            widget.TextOpts.Text(fmt.Sprintf("%02X", i), face, textColor),
+        ))
+
+        rows.AddChild(container)
     }
 
     channels.AddChild(rows)
@@ -194,10 +237,21 @@ func makeUI(engine *Engine) *ebitenui.UI {
                 // noteList.AddEntry(name)
             }
 
-            channel.AddChild(widget.NewText(
+            textContainer := widget.NewContainer(
+                widget.ContainerOpts.Layout(widget.NewRowLayout(
+                    widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                    widget.RowLayoutOpts.Spacing(2),
+                )),
+            )
+
+            textContainer.AddChild(widget.NewText(
                 widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
                 widget.TextOpts.Text(name, face, color.White),
             ))
+
+            rowContainers[row] = append(rowContainers[row], textContainer)
+
+            channel.AddChild(textContainer)
         }
 
         // channel.AddChild(noteList)
@@ -207,11 +261,32 @@ func makeUI(engine *Engine) *ebitenui.UI {
 
     rootContainer.AddChild(channels)
 
+    /*
+    for _, container := range rowContainers[3] {
+        container.BackgroundImage = ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128})
+    }
+    */
+
     ui := ebitenui.UI{
         Container: rootContainer,
     }
 
-    return &ui
+    currentRowHighlight := 0
+    uiHooks := UIHooks{
+        UpdateRow: func(row int) {
+            for _, container := range rowContainers[currentRowHighlight] {
+                container.BackgroundImage = nil
+            }
+            currentRowHighlight = row
+            for _, container := range rowContainers[row] {
+                container.BackgroundImage = ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128})
+            }
+        },
+    }
+
+    uiHooks.UpdateRow(currentRowHighlight)
+
+    return &ui, uiHooks
 }
 
 func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, error) {
@@ -221,7 +296,11 @@ func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, er
         AudioContext: audioContext,
     }
 
-    engine.UI = makeUI(engine)
+    engine.UI, engine.UIHooks = makeUI(engine)
+
+    modPlayer.OnChangeRow = func(row int) {
+        engine.UIHooks.UpdateRow(row)
+    }
 
     for _, channel := range modPlayer.Channels {
         playChannel, err := audioContext.NewPlayerF32(channel)
