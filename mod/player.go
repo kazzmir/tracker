@@ -278,6 +278,20 @@ func addSemitones(frequency int, semitones int) int {
     return computeInverseAmigaFrequency(int(float64(computeAmigaFrequency(frequency)) * math.Pow(2, float64(semitones) / 12.0)))
 }
 
+func (channel *Channel) UpdatePortamento(ticks int) {
+    direction := 1
+    // log.Printf("channel %v Portamento target %v current %v", channel.ChannelNumber, channel.TonePortamentoTarget, channel.CurrentFrequency)
+    if channel.TonePortamentoTarget < channel.CurrentFrequency {
+        direction = -1
+    }
+    channel.CurrentFrequency += ticks * channel.TonePortamentoSpeed * direction
+    if direction == -1 && channel.CurrentFrequency < channel.TonePortamentoTarget {
+        channel.CurrentFrequency = channel.TonePortamentoTarget
+    } else if direction == 1 && channel.CurrentFrequency > channel.TonePortamentoTarget {
+        channel.CurrentFrequency = channel.TonePortamentoTarget
+    }
+}
+
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
     if channel.Delay > 0 {
         channel.Delay -= ticks
@@ -294,6 +308,11 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
                 channel.CurrentFrequency += ticks * channel.CurrentEffectParameter
                 channel.CurrentFrequency = min(channel.CurrentFrequency, 2000)
             }
+        case EffectPortamentoAndVolumeSlide:
+            if !changeRow {
+                channel.UpdateVolume()
+                channel.UpdatePortamento(ticks)
+            }
         case EffectVibratoAndVolumeSlide:
             if !changeRow {
                 channel.Vibrato.Update()
@@ -303,17 +322,7 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
             channel.UpdateVolume()
         case EffectTonePortamento:
             if !changeRow {
-                direction := 1
-                // log.Printf("channel %v Portamento target %v current %v", channel.ChannelNumber, channel.TonePortamentoTarget, channel.CurrentFrequency)
-                if channel.TonePortamentoTarget < channel.CurrentFrequency {
-                    direction = -1
-                }
-                channel.CurrentFrequency += ticks * channel.TonePortamentoSpeed * direction
-                if direction == -1 && channel.CurrentFrequency < channel.TonePortamentoTarget {
-                    channel.CurrentFrequency = channel.TonePortamentoTarget
-                } else if direction == 1 && channel.CurrentFrequency > channel.TonePortamentoTarget {
-                    channel.CurrentFrequency = channel.TonePortamentoTarget
-                }
+                channel.UpdatePortamento(ticks)
             }
         case EffectVibrato:
             if !changeRow {
@@ -420,6 +429,9 @@ func (channel *Channel) UpdateRow() {
             channel.CurrentEffectParameter = int(note.EffectParameter)
         case EffectVolumeSlide:
             channel.CurrentEffect = EffectVolumeSlide
+            channel.CurrentEffectParameter = int(note.EffectParameter)
+        case EffectPortamentoAndVolumeSlide:
+            channel.CurrentEffect = EffectPortamentoAndVolumeSlide
             channel.CurrentEffectParameter = int(note.EffectParameter)
         case EffectVibratoAndVolumeSlide:
             channel.CurrentEffect = EffectVibratoAndVolumeSlide
