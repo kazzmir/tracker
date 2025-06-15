@@ -146,6 +146,8 @@ type Channel struct {
     Vibrato Vibrato
     TonePortamentoTarget int
     TonePortamentoSpeed int
+    ArpeggioBase int
+    ArpeggioTicks int
 
     Volume float32
 
@@ -241,8 +243,14 @@ func (channel *Channel) Read(data []byte) (int, error) {
     */
 }
 
+const amigaFrequency = 7159090.5
+
 func computeAmigaFrequency(frequency int) float32 {
-    return 7159090.5 / float32(frequency * 2)
+    return amigaFrequency / float32(frequency * 2)
+}
+
+func computeInverseAmigaFrequency(frequency int) int {
+    return int(float32(amigaFrequency / 2 / float32(frequency)))
 }
 
 func (channel *Channel) UpdateVolume() {
@@ -254,6 +262,17 @@ func (channel *Channel) UpdateVolume() {
     } else if down > 0 {
         channel.Volume = max(channel.Volume - float32(down) / 64.0, 0.0)
     }
+}
+
+func addSemitones(frequency int, semitones int) int {
+    // semitones = 12 * log_2(f2/f1)
+    // f2 = f1 * 2^(semitones/12)
+
+    if semitones == 0 {
+        return frequency
+    }
+
+    return computeInverseAmigaFrequency(int(float64(computeAmigaFrequency(frequency)) * math.Pow(2, float64(semitones) / 12.0)))
 }
 
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
@@ -293,6 +312,33 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
             if !changeRow {
                 channel.Vibrato.Update()
             }
+        case EffectArpeggio:
+            tick1 := channel.CurrentEffectParameter >> 4
+            tick2 := channel.CurrentEffectParameter & 0xf
+
+            if changeRow {
+                channel.ArpeggioTicks = 0
+                // channel.CurrentFrequency = channel.ArpeggioBase
+            } else {
+                channel.ArpeggioTicks += ticks
+                switch channel.ArpeggioTicks % 3 {
+                    case 0:
+                        if tick1 > 0 || tick2 > 0 {
+                            channel.CurrentFrequency = channel.ArpeggioBase
+                        }
+                    case 1:
+                        if tick1 > 0 {
+                            channel.CurrentFrequency = addSemitones(channel.ArpeggioBase, tick1)
+                            log.Printf("Arpeggio tick1 %v, frequency %v", tick1, channel.CurrentFrequency)
+                        }
+                    case 2:
+                        if tick2 > 0 {
+                            channel.CurrentFrequency = addSemitones(channel.ArpeggioBase, tick2)
+                            log.Printf("Arpeggio tick2 %v, frequency %v", tick2, channel.CurrentFrequency)
+                        }
+                }
+            }
+
             /*
             speed := channel.CurrentEffectParameter >> 4
             depth := channel.CurrentEffectParameter & 0xf
@@ -339,6 +385,12 @@ func (channel *Channel) UpdateRow() {
                 channel.Player.Speed = int(note.EffectParameter)
             } else if note.EffectParameter >= 0x20 && note.EffectParameter <= 0xff {
                 channel.Player.BPM = int(note.EffectParameter)
+            }
+        case EffectArpeggio:
+            if note.EffectParameter > 0 {
+                channel.CurrentEffect = EffectArpeggio
+                channel.CurrentEffectParameter = int(note.EffectParameter)
+                channel.ArpeggioBase = newFrequency
             }
         case EffectTonePortamento:
             channel.CurrentEffect = EffectTonePortamento
@@ -590,6 +642,7 @@ func (player *Player) Update(timeDelta float32) {
 
     if player.ticks >= float32(player.Speed) {
         player.CurrentRow += 1
+        // log.Printf("Row: %v", player.CurrentRow)
         player.ticks -= float32(player.Speed)
     }
 
