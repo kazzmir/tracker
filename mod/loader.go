@@ -109,8 +109,11 @@ func Load(reader io.ReadSeeker) (*ModFile, error) {
     } else if bytes.Equal(kind, []byte{'8', 'C', 'H', 'N'}) {
         channels = 8
         log.Printf("Detected 8 channel mod")
+    } else if bytes.Equal(kind, []byte{'1', '0', 'C', 'H'}) {
+        channels = 10
+        log.Printf("Detected 10 channel mod")
     } else {
-        return nil, fmt.Errorf("Not a mod file")
+        return nil, fmt.Errorf("Not a mod file: %v '%v'", kind, string(kind))
     }
 
     _, err = reader.Seek(0, io.SeekStart)
