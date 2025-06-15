@@ -10,17 +10,35 @@ import (
     "flag"
     "runtime/pprof"
     "encoding/binary"
+    "image/color"
 
     "github.com/kazzmir/tracker/mod"
 
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/inpututil"
     "github.com/hajimehoshi/ebiten/v2/audio"
+
+    "github.com/ebitenui/ebitenui"
+    "github.com/ebitenui/ebitenui/widget"
+    ui_image "github.com/ebitenui/ebitenui/image"
 )
 
 type Engine struct {
     Player *mod.Player
     AudioContext *audio.Context
+    UI *ebitenui.UI
+}
+
+func makeUI(engine *Engine) *ebitenui.UI {
+    rootContainer := widget.NewContainer(
+        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
+    )
+
+    ui := ebitenui.UI{
+        Container: rootContainer,
+    }
+
+    return &ui
 }
 
 func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, error) {
@@ -29,6 +47,8 @@ func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, er
         Player: modPlayer,
         AudioContext: audioContext,
     }
+
+    engine.UI = makeUI(engine)
 
     for _, channel := range modPlayer.Channels {
         playChannel, err := audioContext.NewPlayerF32(channel)
@@ -62,11 +82,13 @@ func (engine *Engine) Update() error {
     }
 
     engine.Player.Update(1.0/60)
+    engine.UI.Update()
 
     return nil
 }
 
 func (engine *Engine) Draw(screen *ebiten.Image) {
+    engine.UI.Draw(screen)
 }
 
 func (engine *Engine) Layout(outsideWidth, outsideHeight int) (int, int) {
