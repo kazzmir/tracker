@@ -447,10 +447,15 @@ func (channel *Channel) UpdateRow() {
             }
         case EffectExtra:
             switch note.EffectParameter >> 4 {
-                // fine volume slide down
-                case 2:
+                case 0:
                     // set hardware filter, ignore
+                case 1:
+                    // fine portamento up
+                    channel.CurrentFrequency -= int(note.EffectParameter & 0xf)
+                case 2:
+                    channel.CurrentFrequency += int(note.EffectParameter & 0xf)
                 case 0xb:
+                    // fine volume slide down
                     channel.Volume = max(channel.Volume - float32(note.EffectParameter & 0xf) / 64.0, 0.0)
                 case 0xd:
                     // delay playing the sample
