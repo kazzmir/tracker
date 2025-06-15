@@ -329,12 +329,12 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
                     case 1:
                         if tick1 > 0 {
                             channel.CurrentFrequency = addSemitones(channel.ArpeggioBase, tick1)
-                            log.Printf("Arpeggio tick1 %v, frequency %v", tick1, channel.CurrentFrequency)
+                            // log.Printf("Arpeggio tick1 %v, frequency %v", tick1, channel.CurrentFrequency)
                         }
                     case 2:
                         if tick2 > 0 {
                             channel.CurrentFrequency = addSemitones(channel.ArpeggioBase, tick2)
-                            log.Printf("Arpeggio tick2 %v, frequency %v", tick2, channel.CurrentFrequency)
+                            // log.Printf("Arpeggio tick2 %v, frequency %v", tick2, channel.CurrentFrequency)
                         }
                 }
             }
