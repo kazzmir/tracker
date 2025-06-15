@@ -424,6 +424,13 @@ func (channel *Channel) UpdateRow() {
         case EffectVibratoAndVolumeSlide:
             channel.CurrentEffect = EffectVibratoAndVolumeSlide
             channel.CurrentEffectParameter = int(note.EffectParameter)
+        case EffectPatternBreak:
+            channel.Player.NextOrder()
+            value := int(note.EffectParameter >> 4) * 10 + int(note.EffectParameter & 0xf)
+            if value > 63 {
+                value = 0
+            }
+            channel.Player.CurrentRow = value
         case EffectVibrato:
             channel.CurrentEffect = EffectVibrato
             channel.CurrentEffectParameter = int(note.EffectParameter)
