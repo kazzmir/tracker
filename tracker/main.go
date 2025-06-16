@@ -124,7 +124,12 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         widget.TextOpts.Text(fmt.Sprintf("Order: %v/%v", engine.Player.CurrentOrder, engine.Player.ModFile.SongLength), face, color.White),
     )
 
+    patternText := widget.NewText(
+        widget.TextOpts.Text(fmt.Sprintf("Pattern: %02X", 0), face, color.White),
+    )
+
     infoContainer.AddChild(orderText)
+    infoContainer.AddChild(patternText)
 
     rootContainer.AddChild(infoContainer)
 
@@ -184,7 +189,7 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
                 widget.WidgetOpts.LayoutData(widget.RowLayoutData{
                     // FIXME: use a grid layout to automatically stretch the container
                     // row layout doesn't seem to stretch the container to the viewable area
-                    MaxHeight: 700,
+                    MaxHeight: 650,
                 }),
             ),
             widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
@@ -353,6 +358,7 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
             setupChannels()
 
             orderText.Label = fmt.Sprintf("Order: %v/%v", order, engine.Player.ModFile.SongLength)
+            patternText.Label = fmt.Sprintf("Pattern: %02X", pattern)
         },
     }
 
