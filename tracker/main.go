@@ -175,7 +175,19 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
     // rootContainer.AddChild(rowNumberScroller)
     scrollers = append(scrollers, rowNumberScroller)
 
-    channels.AddChild(rowNumberScroller)
+    extraContainer := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+            widget.RowLayoutOpts.Spacing(2),
+        )),
+        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
+    )
+    extraContainer.AddChild(widget.NewText(
+        widget.TextOpts.Text(" ", face, color.White),
+    ))
+    extraContainer.AddChild(rowNumberScroller)
+
+    channels.AddChild(extraContainer)
 
     var removeChannels []widget.RemoveChildFunc
 
