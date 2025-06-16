@@ -324,7 +324,8 @@ func (channel *Channel) UpdateVolume() {
     }
 }
 
-func addSemitones(frequency int, semitones int) int {
+// add semitones to a period. period = 1/frequency
+func addSemitones(period int, semitones int) int {
     // semitones = 12 * log_2(f2/f1)
     // f2 = f1 * 2^(semitones/12)
 
@@ -332,8 +333,8 @@ func addSemitones(frequency int, semitones int) int {
         return frequency
     }
 
-    // return int(float64(frequency) * math.Pow(2, float64(semitones) / 12.0))
-    return computeInverseAmigaFrequency(int(float64(computeAmigaFrequency(frequency)) * math.Pow(2, float64(semitones) / 12.0)))
+    return int(float64(period) / math.Pow(2, float64(semitones) / 12.0))
+    // return computeInverseAmigaFrequency(int(float64(computeAmigaFrequency(frequency)) * math.Pow(2, float64(semitones) / 12.0)))
 }
 
 func (channel *Channel) UpdatePortamento(ticks int) {
