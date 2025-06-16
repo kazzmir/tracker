@@ -296,25 +296,6 @@ func ConvertToNote(period uint16) string {
         }
     }
 
-    /*
-    if period == uint16(c3) {
-        return "C-3"
-    }
-
-    if period >= uint16(c4) {
-        for semitone := range 12 {
-            newFrequency := addSemitones(c4, semitone)
-            diff := newFrequency - int(period)
-            if diff < 0 {
-                diff = -diff
-            }
-            if diff <= 2 {
-                return fmt.Sprintf("%v-4", semitoneToNote(semitone))
-            }
-        }
-    }
-    */
-
     return fmt.Sprintf("%v", period)
 }
 
