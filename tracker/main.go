@@ -16,18 +16,35 @@ import (
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/inpututil"
     "github.com/hajimehoshi/ebiten/v2/audio"
+
+    "github.com/ebitenui/ebitenui"
 )
 
 type Engine struct {
     Player *mod.Player
     AudioContext *audio.Context
+    UI *ebitenui.UI
+    UIHooks UIHooks
 }
 
 func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, error) {
-
     engine := &Engine{
         Player: modPlayer,
         AudioContext: audioContext,
+    }
+
+    engine.UI, engine.UIHooks = makeUI(modPlayer)
+
+    modPlayer.OnChangeRow = func(row int) {
+        engine.UIHooks.UpdateRow(row)
+    }
+
+    modPlayer.OnChangeOrder = func(order int, pattern int) {
+        engine.UIHooks.UpdateOrder(order,pattern)
+    }
+
+    modPlayer.OnChangeSpeed = func(speed int, bpm int) {
+        engine.UIHooks.UpdateSpeed(speed, bpm)
     }
 
     for _, channel := range modPlayer.Channels {
@@ -62,11 +79,13 @@ func (engine *Engine) Update() error {
     }
 
     engine.Player.Update(1.0/60)
+    engine.UI.Update()
 
     return nil
 }
 
 func (engine *Engine) Draw(screen *ebiten.Image) {
+    engine.UI.Draw(screen)
 }
 
 func (engine *Engine) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -203,9 +222,9 @@ func main(){
 
     } else {
         ebiten.SetTPS(60)
-        ebiten.SetWindowSize(640, 480)
+        ebiten.SetWindowSize(800, 800)
         ebiten.SetWindowTitle("Mod Tracker")
-        ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+        // ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
         audioContext := audio.NewContext(sampleRate)
 

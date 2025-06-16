@@ -5,6 +5,7 @@ import (
     "sync"
     "math"
     "io"
+    "fmt"
 )
 
 type AudioBuffer struct {
@@ -250,6 +251,60 @@ func (channel *Channel) Read(data []byte) (int, error) {
 
 const amigaFrequency = 7159090.5
 
+func semitoneToNote(semitone int) string {
+    switch semitone {
+        case 0: return "C"
+        case 1: return "C#"
+        case 2: return "D"
+        case 3: return "D#"
+        case 4: return "E"
+        case 5: return "F"
+        case 6: return "F#"
+        case 7: return "G"
+        case 8: return "G#"
+        case 9: return "A"
+        case 10: return "A#"
+        case 11: return "B"
+    }
+
+    return "?"
+}
+
+// convert a note period to a note name.
+// 428 = C-4
+func ConvertToNote(period uint16) string {
+    c3 := 856
+    c4 := 428
+    c5 := 214
+
+    cValues := map[int]int{
+        c3: 3,
+        c4: 4,
+        c5: 5,
+    }
+
+    for frequency, octave := range cValues {
+        for semitone := range 12 {
+            newFrequency := addSemitones(frequency, semitone)
+            diff := newFrequency - int(period)
+            if diff < 0 {
+                diff = -diff
+            }
+            if diff <= 2 {
+                name := semitoneToNote(semitone)
+
+                if len(name) == 1 {
+                    return fmt.Sprintf("%v-%v", name, octave)
+                } else {
+                    return fmt.Sprintf("%v%v", name, octave)
+                }
+            }
+        }
+    }
+
+    return fmt.Sprintf("%v", period)
+}
+
 func computeAmigaFrequency(frequency int) float32 {
     return amigaFrequency / float32(frequency * 2)
 }
@@ -269,7 +324,8 @@ func (channel *Channel) UpdateVolume() {
     }
 }
 
-func addSemitones(frequency int, semitones int) int {
+// add semitones to a period. period = 1/frequency
+func addSemitones(period int, semitones int) int {
     // semitones = 12 * log_2(f2/f1)
     // f2 = f1 * 2^(semitones/12)
 
@@ -277,7 +333,8 @@ func addSemitones(frequency int, semitones int) int {
         return frequency
     }
 
-    return computeInverseAmigaFrequency(int(float64(computeAmigaFrequency(frequency)) * math.Pow(2, float64(semitones) / 12.0)))
+    return int(float64(period) / math.Pow(2, float64(semitones) / 12.0))
+    // return computeInverseAmigaFrequency(int(float64(computeAmigaFrequency(frequency)) * math.Pow(2, float64(semitones) / 12.0)))
 }
 
 func (channel *Channel) UpdatePortamento(ticks int) {
@@ -615,6 +672,10 @@ type Player struct {
     CurrentOrder int
     CurrentRow int
 
+    OnChangeRow func(int)
+    OnChangeOrder func(int, int)
+    OnChangeSpeed func(int, int)
+
     // count of the orders played
     OrdersPlayed int
 
@@ -654,6 +715,17 @@ func (player *Player) GetPattern() int {
     return int(player.ModFile.Orders[player.CurrentOrder])
 }
 
+func (player *Player) GetRowNote(channel int, rowNumber int) *Note {
+    pattern := player.GetPattern()
+    row := &player.ModFile.Patterns[pattern].Rows[rowNumber]
+
+    if channel < len(row.Notes) {
+        return &row.Notes[channel]
+    }
+
+    return &Note{}
+}
+
 func (player *Player) GetNote(channel int) (*Note, int) {
     pattern := player.GetPattern()
     row := &player.ModFile.Patterns[pattern].Rows[player.CurrentRow]
@@ -673,6 +745,10 @@ func (player *Player) SetOrder(order int) {
     player.CurrentRow = 0
     player.CurrentOrder = order
     player.ticks = 0
+
+    if player.OnChangeOrder != nil {
+        player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
+    }
 }
 
 func (player *Player) NextOrder() {
@@ -681,6 +757,10 @@ func (player *Player) NextOrder() {
         player.CurrentOrder = 0
     }
     player.CurrentRow = 0
+
+    if player.OnChangeOrder != nil {
+        player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
+    }
 }
 
 func (player *Player) PreviousOrder() {
@@ -689,6 +769,10 @@ func (player *Player) PreviousOrder() {
         player.CurrentOrder = 0
     }
     player.CurrentRow = 0
+
+    if player.OnChangeOrder != nil {
+        player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
+    }
 }
 
 func (player *Player) Update(timeDelta float32) {
@@ -717,7 +801,17 @@ func (player *Player) Update(timeDelta float32) {
             player.CurrentOrder = 0
         }
 
+        if player.OnChangeOrder != nil {
+            player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
+        }
+
         log.Printf("order %v next pattern: %v", player.CurrentOrder, player.GetPattern())
+    }
+
+    if oldRow != player.CurrentRow {
+        if player.OnChangeRow != nil {
+            player.OnChangeRow(player.CurrentRow)
+        }
     }
 
     for _, channel := range player.Channels {
@@ -732,6 +826,11 @@ func (player *Player) Update(timeDelta float32) {
         }
 
         channel.Update(timeDelta)
+    }
+
+    // FIXME: we could possibly just call this when the speed/bpm changes
+    if player.OnChangeSpeed != nil {
+        player.OnChangeSpeed(player.Speed, player.BPM)
     }
 }
 
