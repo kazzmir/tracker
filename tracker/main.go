@@ -210,53 +210,23 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
             widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
         ))
 
-        /*
-        noteList := widget.NewList(
-            widget.ListOpts.EntryFontFace(face),
-            widget.ListOpts.EntryLabelFunc(
-                func (e any) string {
-                    s := e.(string)
-                    return s
-                },
-            ),
-            widget.ListOpts.HideHorizontalSlider(),
-            widget.ListOpts.HideVerticalSlider(),
-            widget.ListOpts.ContainerOpts(widget.ContainerOpts.WidgetOpts(
-                widget.WidgetOpts.LayoutData(widget.RowLayoutData{
-                    Stretch: true,
-                }),
-            )),
-            widget.ListOpts.SliderOpts(
-                widget.SliderOpts.Images(
-                    &widget.SliderTrackImage{
-                        Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 96, G: 0, B: 0, A: 255}),
-                        Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 164, G: 0, B: 0, A: 255}),
-                    },
-                    makeNineRoundedButtonImage(20, 20, 5, color.NRGBA{R: 128, G: 0, B: 0, A: 255}),
-                ),
-            ),
-            widget.ListOpts.EntrySelectedHandler(func (args *widget.ListEntrySelectedEventArgs) {
-            }),
-            widget.ListOpts.EntryColor(&widget.ListEntryColor{
-                Selected: color.NRGBA{R: 255, G: 255, B: 255, A: 255},
-                Unselected: color.NRGBA{R: 128, G: 128, B: 128, A: 255},
-            }),
-            widget.ListOpts.ScrollContainerOpts(
-                widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
-                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
-                    Disabled: ui_image.NewNineSliceColor(color.NRGBA{R: 5, G: 5, B: 5, A: 255}),
-                    Mask: ui_image.NewNineSliceColor(color.White),
-                }),
-            ),
-        )
-        */
-
         for row := range 64 {
             note := engine.Player.GetRowNote(i, row)
-            name := "..."
+
+            noteName := "..."
             if note.PeriodFrequency > 0 {
-                name = fmt.Sprintf("%v", mod.ConvertToNote(note.PeriodFrequency))
+                noteName = fmt.Sprintf("%v", mod.ConvertToNote(note.PeriodFrequency))
                 // noteList.AddEntry(name)
+            }
+
+            sampleName := ".."
+            if note.SampleNumber > 0 {
+                sampleName = fmt.Sprintf("%02X", note.SampleNumber)
+            }
+
+            effectName := "..."
+            if note.EffectNumber > 0 || note.EffectParameter > 0 {
+                effectName = fmt.Sprintf("%X%02X", note.EffectNumber, note.EffectParameter)
             }
 
             textContainer := widget.NewContainer(
@@ -268,7 +238,7 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
 
             textContainer.AddChild(widget.NewText(
                 widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
-                widget.TextOpts.Text(name, face, color.White),
+                widget.TextOpts.Text(fmt.Sprintf("%v %v %v", noteName, sampleName, effectName), face, color.White),
             ))
 
             rowContainers[row] = append(rowContainers[row], textContainer)
@@ -307,7 +277,7 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
                 top = 0
             }
             rowScroll.ScrollTop = float64(top) / 64
-            log.Printf("Set scroll top to %v", rowScroll.ScrollTop)
+            // log.Printf("Set scroll top to %v", rowScroll.ScrollTop)
 
             for _, container := range rowContainers[currentRowHighlight] {
                 container.BackgroundImage = nil
