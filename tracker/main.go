@@ -91,14 +91,16 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         widget.ContainerOpts.Layout(widget.NewRowLayout(
             widget.RowLayoutOpts.Direction(widget.DirectionVertical),
             widget.RowLayoutOpts.Spacing(2),
+            widget.RowLayoutOpts.Padding(widget.Insets{Top: 10, Bottom: 10}),
         )),
         widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
     )
 
+    // put info stuff here
     rootContainer.AddChild(widget.NewContainer(
         widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 128, G: 128, B: 128, A: 255})),
         widget.ContainerOpts.WidgetOpts(
-            widget.WidgetOpts.MinSize(1000, 100),
+            widget.WidgetOpts.MinSize(800, 100),
         ),
     ))
 
@@ -109,14 +111,14 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         )),
     )
 
-    rows := widget.NewContainer(
+    rowNumbers := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
             widget.RowLayoutOpts.Direction(widget.DirectionVertical),
             widget.RowLayoutOpts.Spacing(2),
         )),
     )
 
-    rows.AddChild(widget.NewText(
+    rowNumbers.AddChild(widget.NewText(
         widget.TextOpts.Text(" ", face, color.White),
     ))
 
@@ -133,8 +135,8 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         ))
         */
 
-        var container *widget.Container
         /*
+        var container *widget.Container
         if i == 3 {
             container = widget.NewContainer(
                 widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128})),
@@ -152,7 +154,7 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
             )
         }
         */
-        container = widget.NewContainer(
+        container := widget.NewContainer(
             widget.ContainerOpts.Layout(widget.NewRowLayout(
                 widget.RowLayoutOpts.Direction(widget.DirectionVertical),
                 widget.RowLayoutOpts.Spacing(2),
@@ -165,10 +167,26 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
             widget.TextOpts.Text(fmt.Sprintf("%02X", i), face, textColor),
         ))
 
-        rows.AddChild(container)
+        rowNumbers.AddChild(container)
     }
 
-    channels.AddChild(rows)
+    rowScroll := widget.NewScrollContainer(
+        widget.ScrollContainerOpts.Content(channels),
+        widget.ScrollContainerOpts.StretchContentWidth(),
+        widget.ScrollContainerOpts.WidgetOpts(
+            widget.WidgetOpts.LayoutData(widget.RowLayoutData{
+                MaxHeight: 600,
+            }),
+        ),
+        widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
+            Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
+            Mask: ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 255, B: 255, A: 255}),
+        }),
+    )
+
+    channels.AddChild(rowNumbers)
+
+    rowScroll.ScrollTop = 1.0
 
     for i := range engine.Player.Channels {
         background := color.NRGBA{R: 64, G: 64, B: 64, A: 255}
@@ -259,7 +277,13 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         channels.AddChild(channel)
     }
 
-    rootContainer.AddChild(channels)
+    // rootContainer.AddChild(channels)
+    rootContainer.AddChild(rowScroll)
+
+    /*
+    x, y := rowScroll.PreferredSize()
+    log.Printf("Preferred size of scroll: %v, %v", x, y)
+    */
 
     /*
     for _, container := range rowContainers[3] {
@@ -274,6 +298,13 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
     currentRowHighlight := 0
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
+            top := row - 16
+            if top < 0 {
+                top = 0
+            }
+            rowScroll.ScrollTop = float64(top) / 64
+            log.Printf("Set scroll top to %v", rowScroll.ScrollTop)
+
             for _, container := range rowContainers[currentRowHighlight] {
                 container.BackgroundImage = nil
             }
