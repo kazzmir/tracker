@@ -33,7 +33,7 @@ var FuturaTTF []byte
 
 type UIHooks struct {
     UpdateRow func(int)
-    UpdatePattern func(int)
+    UpdateOrder func(int, int)
 }
 
 type Engine struct {
@@ -92,18 +92,41 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         widget.ContainerOpts.Layout(widget.NewRowLayout(
             widget.RowLayoutOpts.Direction(widget.DirectionVertical),
             widget.RowLayoutOpts.Spacing(2),
-            widget.RowLayoutOpts.Padding(widget.Insets{Top: 10, Bottom: 10}),
+            // widget.RowLayoutOpts.Padding(widget.Insets{Top: 0, Bottom: 0}),
         )),
         widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
     )
 
     // put info stuff here
-    rootContainer.AddChild(widget.NewContainer(
-        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 128, G: 128, B: 128, A: 255})),
+    infoContainer := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+            widget.RowLayoutOpts.Spacing(1),
+        )),
+        widget.ContainerOpts.WidgetOpts(
+            widget.WidgetOpts.LayoutData(widget.RowLayoutData{
+                // Stretch: true,
+            }),
+        ),
+        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255})),
+        /*
         widget.ContainerOpts.WidgetOpts(
             widget.WidgetOpts.MinSize(800, 100),
         ),
+        */
+    )
+
+    infoContainer.AddChild(widget.NewText(
+        widget.TextOpts.Text(fmt.Sprintf("Mod name: %s", engine.Player.ModFile.Name), face, color.White),
     ))
+
+    orderText := widget.NewText(
+        widget.TextOpts.Text(fmt.Sprintf("Order: %v/%v", engine.Player.CurrentOrder, engine.Player.ModFile.SongLength), face, color.White),
+    )
+
+    infoContainer.AddChild(orderText)
+
+    rootContainer.AddChild(infoContainer)
 
     channels := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
@@ -159,7 +182,9 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
             widget.ScrollContainerOpts.StretchContentWidth(),
             widget.ScrollContainerOpts.WidgetOpts(
                 widget.WidgetOpts.LayoutData(widget.RowLayoutData{
-                    MaxHeight: 600,
+                    // FIXME: use a grid layout to automatically stretch the container
+                    // row layout doesn't seem to stretch the container to the viewable area
+                    MaxHeight: 700,
                 }),
             ),
             widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
@@ -239,33 +264,6 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         }
 
         for i := range engine.Player.Channels {
-            /*
-            background := color.NRGBA{R: 64, G: 64, B: 64, A: 255}
-            if i % 2 == 0 {
-                background = color.NRGBA{R: 96, G: 96, B: 96, A: 255}
-            }
-
-            top := widget.NewContainer(
-                widget.ContainerOpts.Layout(widget.NewRowLayout(
-                    widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                    widget.RowLayoutOpts.Spacing(2),
-                )),
-                widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(background)),
-            )
-
-            top.AddChild(widget.NewText(
-                widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
-            ))
-
-            channel := widget.NewContainer(
-                widget.ContainerOpts.Layout(widget.NewRowLayout(
-                    widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                    widget.RowLayoutOpts.Spacing(2),
-                )),
-                widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(background)),
-            )
-            */
-
             container := channelColumn[i]
 
             for row := range 64 {
@@ -318,31 +316,12 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
 
                 removeChannels = append(removeChannels, container.AddChild(textContainer))
             }
-
-            // channel.AddChild(noteList)
-
-            /*
-            removeChannels = append(removeChannels, top.AddChild(rowScroller))
-            channels.AddChild(top)
-            */
         }
     }
 
     setupChannels()
 
     rootContainer.AddChild(channels)
-    // rootContainer.AddChild(rowScroll)
-
-    /*
-    x, y := rowScroll.PreferredSize()
-    log.Printf("Preferred size of scroll: %v, %v", x, y)
-    */
-
-    /*
-    for _, container := range rowContainers[3] {
-        container.BackgroundImage = ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128})
-    }
-    */
 
     ui := ebitenui.UI{
         Container: rootContainer,
@@ -355,7 +334,7 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
             if top < 0 {
                 top = 0
             }
-            position := float64(top) / (65 + 10)
+            position := float64(top) / (64 + 10)
 
             for _, scroller := range scrollers {
                 scroller.ScrollTop = position
@@ -370,8 +349,10 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
                 container.BackgroundImage = ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128})
             }
         },
-        UpdatePattern: func(pattern int) {
+        UpdateOrder: func(order int, pattern int) {
             setupChannels()
+
+            orderText.Label = fmt.Sprintf("Order: %v/%v", order, engine.Player.ModFile.SongLength)
         },
     }
 
@@ -393,8 +374,8 @@ func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, er
         engine.UIHooks.UpdateRow(row)
     }
 
-    modPlayer.OnChangePattern = func(pattern int) {
-        engine.UIHooks.UpdatePattern(pattern)
+    modPlayer.OnChangeOrder = func(order int, pattern int) {
+        engine.UIHooks.UpdateOrder(order,pattern)
     }
 
     for _, channel := range modPlayer.Channels {
@@ -574,7 +555,7 @@ func main(){
         ebiten.SetTPS(60)
         ebiten.SetWindowSize(800, 800)
         ebiten.SetWindowTitle("Mod Tracker")
-        ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+        // ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
         audioContext := audio.NewContext(sampleRate)
 
