@@ -330,7 +330,7 @@ func addSemitones(period int, semitones int) int {
     // f2 = f1 * 2^(semitones/12)
 
     if semitones == 0 {
-        return frequency
+        return period
     }
 
     return int(float64(period) / math.Pow(2, float64(semitones) / 12.0))
