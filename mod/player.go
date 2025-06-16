@@ -291,7 +291,13 @@ func ConvertToNote(period uint16) string {
                 diff = -diff
             }
             if diff <= 2 {
-                return fmt.Sprintf("%v-%v", semitoneToNote(semitone), octave)
+                name := semitoneToNote(semitone)
+
+                if len(name) == 1 {
+                    return fmt.Sprintf("%v-%v", name, octave)
+                } else {
+                    return fmt.Sprintf("%v%v", name, octave)
+                }
             }
         }
     }
@@ -326,6 +332,7 @@ func addSemitones(frequency int, semitones int) int {
         return frequency
     }
 
+    // return int(float64(frequency) * math.Pow(2, float64(semitones) / 12.0))
     return computeInverseAmigaFrequency(int(float64(computeAmigaFrequency(frequency)) * math.Pow(2, float64(semitones) / 12.0)))
 }
 
