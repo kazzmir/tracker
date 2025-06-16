@@ -5,6 +5,8 @@ import (
     "log"
     "time"
     "io"
+    "bytes"
+    "sync"
     // for discard
     // "io/ioutil"
     "flag"
@@ -26,6 +28,10 @@ type Engine struct {
     AudioContext *audio.Context
     UI *ebitenui.UI
     UIHooks UIHooks
+
+    Players []*audio.Player
+    Start sync.Once
+    updates uint64
 }
 
 func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, error) {
@@ -53,15 +59,17 @@ func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, er
         if err != nil {
             return nil, err
         }
-        playChannel.SetBufferSize(time.Second / 8)
+        playChannel.SetBufferSize(time.Second / 20)
         playChannel.SetVolume(0.3)
-        playChannel.Play()
+        engine.Players = append(engine.Players, playChannel)
+        // playChannel.Play()
     }
 
     return engine, nil
 }
 
 func (engine *Engine) Update() error {
+    engine.updates += 1
 
     keys := inpututil.AppendJustPressedKeys(nil)
     for _, key := range keys {
@@ -79,7 +87,19 @@ func (engine *Engine) Update() error {
         }
     }
 
-    engine.Player.Update(1.0/60)
+    if engine.AudioContext.IsReady() {
+        if engine.updates >= 0 {
+            engine.Start.Do(func() {
+                for i, player := range engine.Players {
+                    log.Printf("Start player %v", i)
+                    player.Play()
+                    log.Printf("Player %v started", i)
+                }
+            })
+        }
+        engine.Player.Update(1.0/60)
+    }
+
     engine.UI.Update()
 
     return nil
@@ -134,6 +154,8 @@ func saveToWav(path string, reader io.Reader, sampleRate int) error {
 func main(){
     log.SetFlags(log.Lshortfile | log.Ldate | log.Lmicroseconds)
 
+    log.Printf("Running")
+
     profile := flag.Bool("profile", false, "Enable profiling")
     wav := flag.String("wav", "", "Output wav file")
     flag.Parse()
@@ -143,6 +165,9 @@ func main(){
         return
     }
 
+    log.Printf("Done")
+
+    /*
     if *profile {
         log.Println("Profiling enabled")
         f, err := os.Create("profile.out")
@@ -154,10 +179,11 @@ func main(){
         pprof.StartCPUProfile(f)
         defer pprof.StopCPUProfile()
     }
+    */
 
-    var modFile *mod.File
+    var modFile *mod.ModFile
 
-    if len(flag.Args()) > {
+    if len(flag.Args()) > 0 {
         path := flag.Args()[0]
         file, err := os.Open(path)
         if err != nil {
@@ -173,30 +199,31 @@ func main(){
             log.Printf("Mod name: '%v'", modFile.Name)
         }
     } else {
-        dataFile, err := data.FindMod()
+        dataFile, name, err := data.FindMod()
         if err != nil {
             log.Printf("Error finding mod file: %v", err)
             return
         }
-        modFile, err = mod.Load(dataFile)
+
+        var buffer bytes.Buffer
+        _, err = io.Copy(&buffer, dataFile)
+        if err != nil {
+            log.Printf("Error reading mod file: %v", err)
+            return
+        }
+
+        reader := bytes.NewReader(buffer.Bytes())
+
+        modFile, err = mod.Load(reader)
         if err != nil {
             log.Printf("Error loading mod file: %v", err)
             return
         } else {
-            log.Printf("Successfully loaded %v", dataFile.Name())
+            log.Printf("Successfully loaded %v", name)
             log.Printf("Mod name: '%v'", modFile.Name)
         }
         dataFile.Close()
     }
-
-    /*
-    for i := range modFile.Patterns[0].Rows {
-        modFile.Patterns[0].Rows[i].Notes = []mod.Note{mod.Note{}, mod.Note{}}
-    }
-
-    modFile.Patterns[0].Rows[0].Notes = []mod.Note{mod.Note{}, mod.Note{SampleNumber: 0xd, PeriodFrequency: 400}}
-    // modFile.Patterns[1].Rows[4].Notes = []mod.Note{mod.Note{SampleNumber: 0xd}}
-    */
 
     sampleRate := 44100
     modPlayer := mod.MakePlayer(modFile, sampleRate)
@@ -266,4 +293,6 @@ func main(){
             log.Printf("Error: %v", err)
         }
     }
+
+    log.Printf("Finished")
 }
