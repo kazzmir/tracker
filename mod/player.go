@@ -756,6 +756,10 @@ func (player *Player) SetOrder(order int) {
     player.CurrentRow = 0
     player.CurrentOrder = order
     player.ticks = 0
+
+    if player.OnChangeOrder != nil {
+        player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
+    }
 }
 
 func (player *Player) NextOrder() {
@@ -764,6 +768,10 @@ func (player *Player) NextOrder() {
         player.CurrentOrder = 0
     }
     player.CurrentRow = 0
+
+    if player.OnChangeOrder != nil {
+        player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
+    }
 }
 
 func (player *Player) PreviousOrder() {
@@ -772,6 +780,10 @@ func (player *Player) PreviousOrder() {
         player.CurrentOrder = 0
     }
     player.CurrentRow = 0
+
+    if player.OnChangeOrder != nil {
+        player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
+    }
 }
 
 func (player *Player) Update(timeDelta float32) {

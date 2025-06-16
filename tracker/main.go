@@ -153,10 +153,6 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         )),
     )
 
-    rowNumbers.AddChild(widget.NewText(
-        widget.TextOpts.Text(" ", face, color.White),
-    ))
-
     var rowContainers [][]*widget.Container
 
     for i := range 64 {
