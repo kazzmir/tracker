@@ -12,6 +12,7 @@ import (
     "encoding/binary"
 
     "github.com/kazzmir/tracker/mod"
+    "github.com/kazzmir/tracker/data"
 
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -137,7 +138,7 @@ func main(){
     wav := flag.String("wav", "", "Output wav file")
     flag.Parse()
 
-    if len(flag.Args()) == 0 {
+    if len(flag.Args()) == 0 && *wav != "" {
         log.Println("Usage: tracker [-wav <output-path>] <path to mod file>")
         return
     }
@@ -154,19 +155,38 @@ func main(){
         defer pprof.StopCPUProfile()
     }
 
-    path := flag.Args()[0]
-    file, err := os.Open(path)
-    if err != nil {
-        log.Printf("Error opening %v: %v", path, err)
-    }
+    var modFile *mod.File
 
-    modFile, err := mod.Load(file)
-    if err != nil {
-        log.Printf("Error loading %v: %v", path, err)
-        return
+    if len(flag.Args()) > {
+        path := flag.Args()[0]
+        file, err := os.Open(path)
+        if err != nil {
+            log.Printf("Error opening %v: %v", path, err)
+        }
+
+        modFile, err = mod.Load(file)
+        if err != nil {
+            log.Printf("Error loading %v: %v", path, err)
+            return
+        } else {
+            log.Printf("Successfully loaded %v", path)
+            log.Printf("Mod name: '%v'", modFile.Name)
+        }
     } else {
-        log.Printf("Successfully loaded %v", path)
-        log.Printf("Mod name: '%v'", modFile.Name)
+        dataFile, err := data.FindMod()
+        if err != nil {
+            log.Printf("Error finding mod file: %v", err)
+            return
+        }
+        modFile, err = mod.Load(dataFile)
+        if err != nil {
+            log.Printf("Error loading mod file: %v", err)
+            return
+        } else {
+            log.Printf("Successfully loaded %v", dataFile.Name())
+            log.Printf("Mod name: '%v'", modFile.Name)
+        }
+        dataFile.Close()
     }
 
     /*
