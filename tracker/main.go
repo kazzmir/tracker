@@ -153,23 +153,67 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         ))
     }
 
-    rowScroll := widget.NewScrollContainer(
-        widget.ScrollContainerOpts.Content(channels),
-        widget.ScrollContainerOpts.StretchContentWidth(),
-        widget.ScrollContainerOpts.WidgetOpts(
-            widget.WidgetOpts.LayoutData(widget.RowLayoutData{
-                MaxHeight: 600,
+    makeRowScroller := func(content *widget.Container) *widget.ScrollContainer {
+        return widget.NewScrollContainer(
+            widget.ScrollContainerOpts.Content(content),
+            widget.ScrollContainerOpts.StretchContentWidth(),
+            widget.ScrollContainerOpts.WidgetOpts(
+                widget.WidgetOpts.LayoutData(widget.RowLayoutData{
+                    MaxHeight: 600,
+                }),
+            ),
+            widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
+                Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
+                Mask: ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 255, B: 255, A: 255}),
             }),
-        ),
-        widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
-            Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
-            Mask: ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 255, B: 255, A: 255}),
-        }),
-    )
+        )
+    }
 
-    channels.AddChild(rowNumbers)
+    var scrollers []*widget.ScrollContainer
+
+    rowNumberScroller := makeRowScroller(rowNumbers)
+    // rootContainer.AddChild(rowNumberScroller)
+    scrollers = append(scrollers, rowNumberScroller)
+
+    channels.AddChild(rowNumberScroller)
 
     var removeChannels []widget.RemoveChildFunc
+
+    var channelColumn []*widget.Container
+    for i := range engine.Player.Channels {
+        column := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                widget.RowLayoutOpts.Spacing(2),
+            )),
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
+        )
+
+        column.AddChild(widget.NewText(
+            widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
+        ))
+
+        background := color.NRGBA{R: 64, G: 64, B: 64, A: 255}
+        if i % 2 == 0 {
+            background = color.NRGBA{R: 96, G: 96, B: 96, A: 255}
+        }
+
+        data := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                widget.RowLayoutOpts.Spacing(2),
+            )),
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(background)),
+        )
+
+        scroller := makeRowScroller(data)
+        scrollers = append(scrollers, scroller)
+
+        column.AddChild(scroller)
+
+        channelColumn = append(channelColumn, data)
+        channels.AddChild(column)
+    }
 
     setupChannels := func(){
         for _, remove := range removeChannels {
@@ -183,10 +227,23 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         }
 
         for i := range engine.Player.Channels {
+            /*
             background := color.NRGBA{R: 64, G: 64, B: 64, A: 255}
             if i % 2 == 0 {
                 background = color.NRGBA{R: 96, G: 96, B: 96, A: 255}
             }
+
+            top := widget.NewContainer(
+                widget.ContainerOpts.Layout(widget.NewRowLayout(
+                    widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                    widget.RowLayoutOpts.Spacing(2),
+                )),
+                widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(background)),
+            )
+
+            top.AddChild(widget.NewText(
+                widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
+            ))
 
             channel := widget.NewContainer(
                 widget.ContainerOpts.Layout(widget.NewRowLayout(
@@ -195,10 +252,9 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
                 )),
                 widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(background)),
             )
+            */
 
-            channel.AddChild(widget.NewText(
-                widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
-            ))
+            container := channelColumn[i]
 
             for row := range 64 {
                 note := engine.Player.GetRowNote(i, row)
@@ -232,20 +288,38 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
                 ))
 
                 rowContainers[row] = append(rowContainers[row], textContainer)
+                removeChannels = append(removeChannels, container.AddChild(textContainer))
+            }
 
-                channel.AddChild(textContainer)
+            for range 32 {
+                textContainer := widget.NewContainer(
+                    widget.ContainerOpts.Layout(widget.NewRowLayout(
+                        widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                        widget.RowLayoutOpts.Spacing(2),
+                    )),
+                )
+
+                textContainer.AddChild(widget.NewText(
+                    widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
+                    widget.TextOpts.Text("-", face, color.White),
+                ))
+
+                removeChannels = append(removeChannels, container.AddChild(textContainer))
             }
 
             // channel.AddChild(noteList)
 
-            removeChannels = append(removeChannels, channels.AddChild(channel))
+            /*
+            removeChannels = append(removeChannels, top.AddChild(rowScroller))
+            channels.AddChild(top)
+            */
         }
     }
 
     setupChannels()
 
-    // rootContainer.AddChild(channels)
-    rootContainer.AddChild(rowScroll)
+    rootContainer.AddChild(channels)
+    // rootContainer.AddChild(rowScroll)
 
     /*
     x, y := rowScroll.PreferredSize()
@@ -269,7 +343,11 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
             if top < 0 {
                 top = 0
             }
-            rowScroll.ScrollTop = float64(top) / 64
+            position := float64(top) / (65 + 10)
+
+            for _, scroller := range scrollers {
+                scroller.ScrollTop = position
+            }
             // log.Printf("Set scroll top to %v", rowScroll.ScrollTop)
 
             for _, container := range rowContainers[currentRowHighlight] {
