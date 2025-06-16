@@ -685,6 +685,7 @@ type Player struct {
 
     OnChangeRow func(int)
     OnChangeOrder func(int, int)
+    OnChangeSpeed func(int, int)
 
     // count of the orders played
     OrdersPlayed int
@@ -824,6 +825,11 @@ func (player *Player) Update(timeDelta float32) {
         }
 
         channel.Update(timeDelta)
+    }
+
+    // FIXME: we could possibly just call this when the speed/bpm changes
+    if player.OnChangeSpeed != nil {
+        player.OnChangeSpeed(player.Speed, player.BPM)
     }
 }
 

@@ -34,6 +34,7 @@ var FuturaTTF []byte
 type UIHooks struct {
     UpdateRow func(int)
     UpdateOrder func(int, int)
+    UpdateSpeed func(int, int)
 }
 
 type Engine struct {
@@ -128,8 +129,13 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         widget.TextOpts.Text(fmt.Sprintf("Pattern: %02X", 0), face, color.White),
     )
 
+    speedText := widget.NewText(
+        widget.TextOpts.Text(fmt.Sprintf("Speed: %d BPM: %d", engine.Player.Speed, engine.Player.BPM), face, color.White),
+    )
+
     infoContainer.AddChild(orderText)
     infoContainer.AddChild(patternText)
+    infoContainer.AddChild(speedText)
 
     rootContainer.AddChild(infoContainer)
 
@@ -360,6 +366,9 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
             orderText.Label = fmt.Sprintf("Order: %v/%v", order, engine.Player.ModFile.SongLength)
             patternText.Label = fmt.Sprintf("Pattern: %02X", pattern)
         },
+        UpdateSpeed: func(speed int, bpm int) {
+            speedText.Label = fmt.Sprintf("Speed: %d BPM: %d", speed, bpm)
+        },
     }
 
     uiHooks.UpdateRow(currentRowHighlight)
@@ -382,6 +391,10 @@ func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, er
 
     modPlayer.OnChangeOrder = func(order int, pattern int) {
         engine.UIHooks.UpdateOrder(order,pattern)
+    }
+
+    modPlayer.OnChangeSpeed = func(speed int, bpm int) {
+        engine.UIHooks.UpdateSpeed(speed, bpm)
     }
 
     for _, channel := range modPlayer.Channels {
