@@ -170,6 +170,12 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         rowNumbers.AddChild(container)
     }
 
+    for range 32 {
+        rowNumbers.AddChild(widget.NewText(
+            widget.TextOpts.Text("-", face, color.White),
+        ))
+    }
+
     rowScroll := widget.NewScrollContainer(
         widget.ScrollContainerOpts.Content(channels),
         widget.ScrollContainerOpts.StretchContentWidth(),
@@ -185,8 +191,6 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
     )
 
     channels.AddChild(rowNumbers)
-
-    rowScroll.ScrollTop = 1.0
 
     for i := range engine.Player.Channels {
         background := color.NRGBA{R: 64, G: 64, B: 64, A: 255}
