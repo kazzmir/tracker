@@ -33,6 +33,7 @@ var FuturaTTF []byte
 
 type UIHooks struct {
     UpdateRow func(int)
+    UpdatePattern func(int)
 }
 
 type Engine struct {
@@ -129,31 +130,7 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
         if (i + 1) % 4 == 0 {
             textColor = color.RGBA{R: 200, G: 200, B: 0, A: 255}
         }
-        /*
-        rows.AddChild(widget.NewText(
-            widget.TextOpts.Text(fmt.Sprintf("%02X", i), face, textColor),
-        ))
-        */
 
-        /*
-        var container *widget.Container
-        if i == 3 {
-            container = widget.NewContainer(
-                widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128})),
-                widget.ContainerOpts.Layout(widget.NewRowLayout(
-                    widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                    widget.RowLayoutOpts.Spacing(2),
-                )),
-            )
-        } else {
-            container = widget.NewContainer(
-                widget.ContainerOpts.Layout(widget.NewRowLayout(
-                    widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                    widget.RowLayoutOpts.Spacing(2),
-                )),
-            )
-        }
-        */
         container := widget.NewContainer(
             widget.ContainerOpts.Layout(widget.NewRowLayout(
                 widget.RowLayoutOpts.Direction(widget.DirectionVertical),
@@ -192,64 +169,80 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
 
     channels.AddChild(rowNumbers)
 
-    for i := range engine.Player.Channels {
-        background := color.NRGBA{R: 64, G: 64, B: 64, A: 255}
-        if i % 2 == 0 {
-            background = color.NRGBA{R: 96, G: 96, B: 96, A: 255}
+    var removeChannels []widget.RemoveChildFunc
+
+    setupChannels := func(){
+        for _, remove := range removeChannels {
+            remove()
         }
 
-        channel := widget.NewContainer(
-            widget.ContainerOpts.Layout(widget.NewRowLayout(
-                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                widget.RowLayoutOpts.Spacing(2),
-            )),
-            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(background)),
-        )
-
-        channel.AddChild(widget.NewText(
-            widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
-        ))
+        removeChannels = nil
 
         for row := range 64 {
-            note := engine.Player.GetRowNote(i, row)
+            rowContainers[row] = rowContainers[row][1:]
+        }
 
-            noteName := "..."
-            if note.PeriodFrequency > 0 {
-                noteName = fmt.Sprintf("%v", mod.ConvertToNote(note.PeriodFrequency))
-                // noteList.AddEntry(name)
+        for i := range engine.Player.Channels {
+            background := color.NRGBA{R: 64, G: 64, B: 64, A: 255}
+            if i % 2 == 0 {
+                background = color.NRGBA{R: 96, G: 96, B: 96, A: 255}
             }
 
-            sampleName := ".."
-            if note.SampleNumber > 0 {
-                sampleName = fmt.Sprintf("%02X", note.SampleNumber)
-            }
-
-            effectName := "..."
-            if note.EffectNumber > 0 || note.EffectParameter > 0 {
-                effectName = fmt.Sprintf("%X%02X", note.EffectNumber, note.EffectParameter)
-            }
-
-            textContainer := widget.NewContainer(
+            channel := widget.NewContainer(
                 widget.ContainerOpts.Layout(widget.NewRowLayout(
                     widget.RowLayoutOpts.Direction(widget.DirectionVertical),
                     widget.RowLayoutOpts.Spacing(2),
                 )),
+                widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(background)),
             )
 
-            textContainer.AddChild(widget.NewText(
-                widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
-                widget.TextOpts.Text(fmt.Sprintf("%v %v %v", noteName, sampleName, effectName), face, color.White),
+            channel.AddChild(widget.NewText(
+                widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
             ))
 
-            rowContainers[row] = append(rowContainers[row], textContainer)
+            for row := range 64 {
+                note := engine.Player.GetRowNote(i, row)
 
-            channel.AddChild(textContainer)
+                noteName := "..."
+                if note.PeriodFrequency > 0 {
+                    noteName = fmt.Sprintf("%v", mod.ConvertToNote(note.PeriodFrequency))
+                    // noteList.AddEntry(name)
+                }
+
+                sampleName := ".."
+                if note.SampleNumber > 0 {
+                    sampleName = fmt.Sprintf("%02X", note.SampleNumber)
+                }
+
+                effectName := "..."
+                if note.EffectNumber > 0 || note.EffectParameter > 0 {
+                    effectName = fmt.Sprintf("%X%02X", note.EffectNumber, note.EffectParameter)
+                }
+
+                textContainer := widget.NewContainer(
+                    widget.ContainerOpts.Layout(widget.NewRowLayout(
+                        widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                        widget.RowLayoutOpts.Spacing(2),
+                    )),
+                )
+
+                textContainer.AddChild(widget.NewText(
+                    widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
+                    widget.TextOpts.Text(fmt.Sprintf("%v %v %v", noteName, sampleName, effectName), face, color.White),
+                ))
+
+                rowContainers[row] = append(rowContainers[row], textContainer)
+
+                channel.AddChild(textContainer)
+            }
+
+            // channel.AddChild(noteList)
+
+            removeChannels = append(removeChannels, channels.AddChild(channel))
         }
-
-        // channel.AddChild(noteList)
-
-        channels.AddChild(channel)
     }
+
+    setupChannels()
 
     // rootContainer.AddChild(channels)
     rootContainer.AddChild(rowScroll)
@@ -287,6 +280,9 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
                 container.BackgroundImage = ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128})
             }
         },
+        UpdatePattern: func(pattern int) {
+            setupChannels()
+        },
     }
 
     uiHooks.UpdateRow(currentRowHighlight)
@@ -305,6 +301,10 @@ func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, er
 
     modPlayer.OnChangeRow = func(row int) {
         engine.UIHooks.UpdateRow(row)
+    }
+
+    modPlayer.OnChangePattern = func(pattern int) {
+        engine.UIHooks.UpdatePattern(pattern)
     }
 
     for _, channel := range modPlayer.Channels {

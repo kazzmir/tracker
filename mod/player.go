@@ -684,6 +684,7 @@ type Player struct {
     CurrentRow int
 
     OnChangeRow func(int)
+    OnChangePattern func(int)
 
     // count of the orders played
     OrdersPlayed int
@@ -796,6 +797,10 @@ func (player *Player) Update(timeDelta float32) {
         player.OrdersPlayed += 1
         if player.CurrentOrder >= player.ModFile.SongLength {
             player.CurrentOrder = 0
+        }
+
+        if player.OnChangePattern != nil {
+            player.OnChangePattern(player.GetPattern())
         }
 
         log.Printf("order %v next pattern: %v", player.CurrentOrder, player.GetPattern())
