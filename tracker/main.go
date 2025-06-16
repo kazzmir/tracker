@@ -255,7 +255,7 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
             note := engine.Player.GetRowNote(i, row)
             name := "..."
             if note.PeriodFrequency > 0 {
-                name = fmt.Sprintf("%v", note.PeriodFrequency)
+                name = fmt.Sprintf("%v", mod.ConvertToNote(note.PeriodFrequency))
                 // noteList.AddEntry(name)
             }
 
@@ -302,7 +302,7 @@ func makeUI(engine *Engine) (*ebitenui.UI, UIHooks) {
     currentRowHighlight := 0
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
-            top := row - 16
+            top := row - 10
             if top < 0 {
                 top = 0
             }

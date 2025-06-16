@@ -5,6 +5,7 @@ import (
     "sync"
     "math"
     "io"
+    "fmt"
 )
 
 type AudioBuffer struct {
@@ -249,6 +250,73 @@ func (channel *Channel) Read(data []byte) (int, error) {
 }
 
 const amigaFrequency = 7159090.5
+
+func semitoneToNote(semitone int) string {
+    switch semitone {
+        case 0: return "C"
+        case 1: return "C#"
+        case 2: return "D"
+        case 3: return "D#"
+        case 4: return "E"
+        case 5: return "F"
+        case 6: return "F#"
+        case 7: return "G"
+        case 8: return "G#"
+        case 9: return "A"
+        case 10: return "A#"
+        case 11: return "B"
+    }
+
+    return "?"
+}
+
+// convert a note period to a note name.
+// 428 = C-4
+func ConvertToNote(period uint16) string {
+    c3 := 856
+    c4 := 428
+    c5 := 214
+
+    cValues := map[int]int{
+        c3: 3,
+        c4: 4,
+        c5: 5,
+    }
+
+    for frequency, octave := range cValues {
+        for semitone := range 12 {
+            newFrequency := addSemitones(frequency, semitone)
+            diff := newFrequency - int(period)
+            if diff < 0 {
+                diff = -diff
+            }
+            if diff <= 2 {
+                return fmt.Sprintf("%v-%v", semitoneToNote(semitone), octave)
+            }
+        }
+    }
+
+    /*
+    if period == uint16(c3) {
+        return "C-3"
+    }
+
+    if period >= uint16(c4) {
+        for semitone := range 12 {
+            newFrequency := addSemitones(c4, semitone)
+            diff := newFrequency - int(period)
+            if diff < 0 {
+                diff = -diff
+            }
+            if diff <= 2 {
+                return fmt.Sprintf("%v-4", semitoneToNote(semitone))
+            }
+        }
+    }
+    */
+
+    return fmt.Sprintf("%v", period)
+}
 
 func computeAmigaFrequency(frequency int) float32 {
     return amigaFrequency / float32(frequency * 2)
