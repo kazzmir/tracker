@@ -91,9 +91,7 @@ func (engine *Engine) Update() error {
         if engine.updates >= 0 {
             engine.Start.Do(func() {
                 for i, player := range engine.Players {
-                    log.Printf("Start player %v", i)
                     player.Play()
-                    log.Printf("Player %v started", i)
                 }
             })
         }
