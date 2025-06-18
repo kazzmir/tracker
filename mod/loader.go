@@ -85,42 +85,8 @@ func readByte(reader io.Reader) (byte, error) {
     return buf[0], nil
 }
 
-func Load(reader_ io.ReadSeeker) (*ModFile, error) {
+func Load(reader_ io.Reader) (*ModFile, error) {
     var err error
-
-    _, err = reader_.Seek(0x438, io.SeekStart)
-    if err != nil {
-        return nil, err
-    }
-
-    kind := make([]byte, 4)
-    _, err = io.ReadFull(reader_, kind)
-    if err != nil {
-        return nil, err
-    }
-
-    channels := 4
-
-    if bytes.Equal(kind, []byte{'M', '.', 'K', '.'}) {
-        channels = 4
-        log.Printf("Detected 4 channel mod")
-    } else if bytes.Equal(kind, []byte{'6', 'C', 'H', 'N'}) {
-        channels = 6
-        log.Printf("Detected 6 channel mod")
-    } else if bytes.Equal(kind, []byte{'8', 'C', 'H', 'N'}) {
-        channels = 8
-        log.Printf("Detected 8 channel mod")
-    } else if bytes.Equal(kind, []byte{'1', '0', 'C', 'H'}) {
-        channels = 10
-        log.Printf("Detected 10 channel mod")
-    } else {
-        return nil, fmt.Errorf("Not a mod file: %v '%v'", kind, string(kind))
-    }
-
-    _, err = reader_.Seek(0, io.SeekStart)
-    if err != nil {
-        return nil, err
-    }
 
     reader := bufio.NewReader(reader_)
 
@@ -205,7 +171,26 @@ func Load(reader_ io.ReadSeeker) (*ModFile, error) {
     log.Printf("Pattern max: %v", patternMax)
 
     // read mod kind again
+    kind := make([]byte, 4)
     io.ReadFull(reader, kind)
+
+    channels := 4
+
+    if bytes.Equal(kind, []byte{'M', '.', 'K', '.'}) {
+        channels = 4
+        log.Printf("Detected 4 channel mod")
+    } else if bytes.Equal(kind, []byte{'6', 'C', 'H', 'N'}) {
+        channels = 6
+        log.Printf("Detected 6 channel mod")
+    } else if bytes.Equal(kind, []byte{'8', 'C', 'H', 'N'}) {
+        channels = 8
+        log.Printf("Detected 8 channel mod")
+    } else if bytes.Equal(kind, []byte{'1', '0', 'C', 'H'}) {
+        channels = 10
+        log.Printf("Detected 10 channel mod")
+    } else {
+        return nil, fmt.Errorf("Not a mod file: %v '%v'", kind, string(kind))
+    }
 
     /*
     position, err := reader.Seek(0, io.SeekCurrent)

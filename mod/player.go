@@ -6,6 +6,7 @@ import (
     "math"
     "io"
     "fmt"
+    "runtime"
 )
 
 type AudioBuffer struct {
@@ -174,6 +175,7 @@ type Channel struct {
 }
 
 func (channel *Channel) Read(data []byte) (int, error) {
+    // log.Printf("Read %v bytes from channel %v", len(data), channel.ChannelNumber)
 
     if channel.Mute {
         for i := 0; i < len(data); i++ {
@@ -237,16 +239,19 @@ func (channel *Channel) Read(data []byte) (int, error) {
     }
     */
 
-    return floatSamples * 4 * 2, nil
+    // return floatSamples * 4 * 2, nil
 
-    /*
-    for i < len(data) {
-        data[i] = 0
-        i += 1
+    // in a browser we have to return something, so we generate some silence
+    if i == 0 && runtime.GOOS == "js" {
+        for i < 8 {
+            data[i] = 0
+            i += 1
+        }
+        return 8, nil
+    } else {
+        // on a normal os we can just return 0 if necessary
+        return floatSamples * 8, nil
     }
-
-    return len(data), nil
-    */
 }
 
 const amigaFrequency = 7159090.5
