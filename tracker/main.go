@@ -162,8 +162,6 @@ func main(){
         return
     }
 
-    log.Printf("Done")
-
     /*
     if *profile {
         log.Println("Profiling enabled")
