@@ -5,7 +5,6 @@ import (
     "log"
     "time"
     "io"
-    "bytes"
     "sync"
     // for discard
     // "io/ioutil"
@@ -203,16 +202,7 @@ func main(){
             return
         }
 
-        var buffer bytes.Buffer
-        _, err = io.Copy(&buffer, dataFile)
-        if err != nil {
-            log.Printf("Error reading mod file: %v", err)
-            return
-        }
-
-        reader := bytes.NewReader(buffer.Bytes())
-
-        modFile, err = mod.Load(reader)
+        modFile, err = mod.Load(dataFile)
         if err != nil {
             log.Printf("Error loading mod file: %v", err)
             return
