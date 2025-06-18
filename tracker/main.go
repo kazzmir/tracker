@@ -90,7 +90,7 @@ func (engine *Engine) Update() error {
     if engine.AudioContext.IsReady() {
         if engine.updates >= 0 {
             engine.Start.Do(func() {
-                for i, player := range engine.Players {
+                for _, player := range engine.Players {
                     player.Play()
                 }
             })
