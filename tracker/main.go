@@ -13,6 +13,7 @@ import (
     "encoding/binary"
 
     "github.com/kazzmir/tracker/mod"
+    "github.com/kazzmir/tracker/s3m"
     "github.com/kazzmir/tracker/data"
 
     "github.com/hajimehoshi/ebiten/v2"
@@ -183,6 +184,14 @@ func main(){
         file, err := os.Open(path)
         if err != nil {
             log.Printf("Error opening %v: %v", path, err)
+        }
+
+        _, err = s3m.Load(file)
+        if err != nil {
+            log.Printf("Unable to load s3m: %v", err)
+        }
+        if 2 > 1 {
+            return
         }
 
         modFile, err = mod.Load(file)
