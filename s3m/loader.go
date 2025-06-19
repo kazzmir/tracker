@@ -20,7 +20,23 @@ type Instrument struct {
     Data []byte
 }
 
+type Note struct {
+    SampleNumber int
+    Note int // 0-120, 0 is C-1
+    Volume int // 0-64
+    EffectNumber uint8 // 0-15
+    EffectParameter uint8 // 0-255
+    Channel int // 0-31
+}
+
+type Pattern struct {
+    Rows [][]Note
+}
+
 type S3MFile struct {
+    Instruments []Instrument
+    Patterns []Pattern
+    Orders []byte
 }
 
 func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
@@ -70,12 +86,12 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
     }
     log.Printf("Instruments: %v", numInstruments)
 
-    var patterns uint16
-    err = binary.Read(reader, binary.LittleEndian, &patterns)
+    var patternsIgnore uint16
+    err = binary.Read(reader, binary.LittleEndian, &patternsIgnore)
     if err != nil {
         return nil, err
     }
-    log.Printf("Patterns: %v", patterns)
+    log.Printf("Patterns: %v", patternsIgnore)
 
     var flags uint16
     err = binary.Read(reader, binary.LittleEndian, &flags)
@@ -162,10 +178,15 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
     if err != nil {
         return nil, err
     }
+
+    channelMap := make(map[int]int)
+
     channelCount := 0
     for i, setting := range channelSettings {
         log.Printf("Channel %v setting: %v", i, setting < 16)
         if setting < 16 {
+            channelMap[i] = channelCount
+
             channelCount += 1
 
             if setting <= 7 {
@@ -392,5 +413,101 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
         log.Printf("Instrument %v: type %v", i, type_)
     }
 
-    return nil, nil
+    var patterns []Pattern
+
+    for _, offset := range patternOffsets {
+        var pattern Pattern
+        _, err := reader_.Seek(int64(offset << 4), io.SeekStart)
+        if err != nil {
+            return nil, err
+        }
+
+        var patternLength uint16
+        err = binary.Read(reader_, binary.LittleEndian, &patternLength)
+        if err != nil {
+            return nil, err
+        }
+
+        log.Printf("Pattern %v length 0x%x", len(patterns), patternLength)
+
+        limit := io.LimitReader(reader_, int64(patternLength))
+        buffer := bufio.NewReader(limit)
+
+        rows := make([]Note, channelCount)
+
+        row := 0
+
+        for row < 64 {
+            marker, err := buffer.ReadByte()
+            if err != nil {
+                return nil, err
+            }
+
+            if marker == 0 {
+                pattern.Rows = append(pattern.Rows, rows)
+                rows = make([]Note, channelCount)
+                row += 1
+                continue
+            }
+
+            var note uint8
+            var instrument uint8
+            var volume uint8
+            var effect uint8
+            var effectParameter uint8
+
+            channel := marker & 31
+            if marker & 32 != 0 {
+                note, err = buffer.ReadByte()
+                if err != nil {
+                    return nil, err
+                }
+                instrument, err = buffer.ReadByte()
+                if err != nil {
+                    return nil, err
+                }
+            }
+
+            if marker & 64 != 0 {
+                volume, err = buffer.ReadByte()
+                if err != nil {
+                    return nil, err
+                }
+            }
+
+            if marker & 128 != 0 {
+                effect, err = buffer.ReadByte()
+                if err != nil {
+                    return nil, err
+                }
+                effectParameter, err = buffer.ReadByte()
+                if err != nil {
+                    return nil, err
+                }
+            }
+
+            noteObject := Note{
+                SampleNumber: int(instrument),
+                Note: int(note),
+                Volume: int(volume),
+                EffectNumber: effect,
+                EffectParameter: effectParameter,
+                Channel: int(channel),
+            }
+
+            if int(channel) >= len(channelMap) {
+                return nil, fmt.Errorf("Invalid channel number %v", channel)
+            }
+
+            rows[channelMap[int(channel)]] = noteObject
+        }
+
+        patterns = append(patterns, pattern)
+    }
+
+    return &S3MFile{
+        Instruments: instruments,
+        Patterns: patterns,
+        Orders: orders,
+    }, nil
 }
