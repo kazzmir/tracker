@@ -17,7 +17,7 @@ type Instrument struct {
     Volume uint8
     LoopBegin int
     LoopEnd int
-    Data []byte
+    Data []float32
 }
 
 type Note struct {
@@ -391,16 +391,21 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
                 return nil, fmt.Errorf("Unexpected sample signature: %v", scrsSignature)
             }
 
-            _, err = reader_.Seek(int64(total), io.SeekCurrent)
+            _, err = reader_.Seek(int64(total) * 16, io.SeekStart)
             if err != nil {
                 return nil, err
             }
 
             buffer = bufio.NewReader(reader_)
             data := make([]byte, sampleLength)
-            _, err = io.ReadFull(buffer, data)
+            n, err := io.ReadFull(buffer, data)
             if err != nil {
-                return nil, err
+                return nil, fmt.Errorf("Unable to read sample data: %v. Read %v", err, n)
+            }
+
+            var floatData []float32
+            for _, value := range data {
+                floatData = append(floatData, (float32(value) - 128)/128.0)
             }
 
             instruments = append(instruments, Instrument{
@@ -410,7 +415,12 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
                 Flags: flags,
                 LoopBegin: int(loopBegin),
                 LoopEnd: int(loopEnd),
-                Data: data,
+                Data: floatData,
+            })
+
+            log.Printf("Instrument %v data %v", i, len(floatData))
+        } else {
+            instruments = append(instruments, Instrument{
             })
         }
 

@@ -2,9 +2,23 @@ package s3m
 
 import (
     "log"
+    "math"
+    "runtime"
 
     "github.com/kazzmir/tracker/common"
 )
+
+var Octaves []int = []int{
+    27392,25856,24384,23040,21696,20480,19328,18240,17216,16256,15360,14496,
+    13696,12928,12192,11520,10848,10240, 9664, 9120, 8608, 8128, 7680, 7248,
+    6848, 6464, 6096, 5760, 5424, 5120, 4832, 4560, 4304, 4064, 3840, 3624,
+    3424, 3232, 3048, 2880, 2712, 2560, 2416, 2280, 2152, 2032, 1920, 1812,
+    1712, 1616, 1524, 1440, 1356, 1280, 1208, 1140, 1076, 1016,  960,  906,
+    856,  808,  762,  720,  678,  640,  604,  570,  538,  508,  480,  453,
+    428,  404,  381,  360,  339,  320,  302,  285,  269,  254,  240,  226,
+    214,  202,  190,  180,  170,  160,  151,  143,  135,  127,  120,  113,
+    107,  101,   95,   90,   85,   80,   75,   71,   67,   63,   60,   56,
+}
 
 type Channel struct {
     Player *Player
@@ -12,10 +26,12 @@ type Channel struct {
     Channel int
     Volume float32
     buffer []float32 // used for reading audio data
+    Mute bool
 
     CurrentNote *Note
 
     currentRow int
+    startPosition float32
 }
 
 func (channel *Channel) UpdateRow() {
@@ -24,7 +40,8 @@ func (channel *Channel) UpdateRow() {
     channel.CurrentNote = channel.Player.GetNote(channel.Channel, channel.currentRow)
 
     if channel.CurrentNote != nil && channel.CurrentNote.Note != 0 {
-        log.Printf("Channel %v play %v", channel.Channel, channel.CurrentNote)
+        log.Printf("Channel %v row %v play %+v", channel.Channel, channel.currentRow, channel.CurrentNote)
+        channel.startPosition = 0.0
     }
 }
 
@@ -32,19 +49,139 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
 }
 
 func (channel *Channel) Update(rate float32) {
+
+    samples := int(float32(channel.Player.SampleRate) * rate)
+    samplesWritten := 0
+
+    channel.AudioBuffer.Lock()
+
+    // if channel.CurrentNote != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
+    if channel.CurrentNote != nil && channel.CurrentNote.Note > 0 {
+        instrument := channel.Player.GetInstrument(channel.CurrentNote.SampleNumber-1)
+        period := 8363 * Octaves[channel.CurrentNote.Note-1] / int(instrument.MiddleC) // 0 is no note, 1 is C-0
+        frequency := 14317056 / float32(period)
+
+        // frequency = 4000
+
+        log.Printf("Octave %v Frequency %v", Octaves[channel.CurrentNote.Note-1], frequency)
+
+        /*
+        if channel.CurrentEffect == EffectVibrato {
+            frequency = channel.Vibrato.Apply(frequency)
+        }
+        */
+
+        incrementRate := frequency / float32(channel.Player.SampleRate)
+
+        // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
+
+        if incrementRate > 0 {
+            for range samples {
+                position := int(channel.startPosition)
+                /*
+                if position >= len(channel.CurrentSample.Data) {
+                    break
+                }
+                */
+                if position >= len(instrument.Data) /* || (instrument.LoopLength > 1 && position >= (channel.CurrentSample.LoopStart + channel.CurrentSample.LoopLength) * 2) */ {
+                    /*
+                    if channel.CurrentSample.LoopLength > 1 {
+                        channel.startPosition = float32(channel.CurrentSample.LoopStart * 2)
+                        position = int(channel.startPosition)
+                    } else {
+                        break
+                    }
+                    */
+                    break
+                }
+
+                noteVolume := float32(1.0)
+                if channel.CurrentNote.Volume > 0 {
+                    noteVolume = float32(channel.CurrentNote.Volume) / 64
+                }
+
+                channel.AudioBuffer.UnsafeWrite(instrument.Data[position] * channel.Volume * noteVolume)
+                channel.startPosition += incrementRate
+                samplesWritten += 1
+            }
+        }
+
+        /*
+        part := channel.CurrentSample.Data[channel.startPosition:channel.endPosition]
+        if len(part) > 0 {
+            // channel.AudioBuffer.Write(part, noteRate)
+            // middle-C
+            channel.AudioBuffer.Write(part, 261.63 / float32(note.PeriodFrequency))
+        }
+        */
+    }
+
+    for range (samples - samplesWritten) {
+        channel.AudioBuffer.UnsafeWrite(0.0)
+    }
+
+    channel.AudioBuffer.Unlock()
+
 }
 
 func (channel *Channel) Read(data []byte) (int, error) {
-    for i := range data {
-        data[i] = 0
+    if channel.Mute {
+        for i := 0; i < len(data); i++ {
+            data[i] = 0
+        }
+        channel.AudioBuffer.Clear()
+        return len(data), nil
     }
 
-    return len(data), nil
+    samples := len(data) / 4 / 2
+
+    // sampleFrequency := 22050 / 2
+    // samples = (samples * sampleFrequency) / channel.Engine.SampleRate
+
+    // rate := float32(sampleFrequency) / float32(channel.Engine.SampleRate)
+
+    // part := channel.buffer[:samples]
+    part := channel.buffer[:samples]
+    floatSamples := channel.AudioBuffer.Read(part)
+
+    // log.Printf("Emit %v samples", floatSamples)
+
+    i := 0
+    for sampleIndex := range floatSamples {
+        value := part[sampleIndex]
+        bits := math.Float32bits(value)
+        data[i*8+0] = byte(bits)
+        data[i*8+1] = byte(bits >> 8)
+        data[i*8+2] = byte(bits >> 16)
+        data[i*8+3] = byte(bits >> 24)
+
+        data[i*8+4] = byte(bits)
+        data[i*8+5] = byte(bits >> 8)
+        data[i*8+6] = byte(bits >> 16)
+        data[i*8+7] = byte(bits >> 24)
+
+        i += 1
+    }
+
+    i *= 8
+
+    // in a browser we have to return something, so we generate some silence
+    if i == 0 && runtime.GOOS == "js" {
+        for i < 8 {
+            data[i] = 0
+            i += 1
+        }
+        return 8, nil
+    } else {
+        // on a normal os we can just return 0 if necessary
+        return floatSamples * 8, nil
+    }
 }
 
 type Player struct {
     Channels []*Channel
     S3M *S3MFile
+    SampleRate int
 
     Speed int
     BPM int
@@ -62,6 +199,13 @@ func (player *Player) GetPattern() int {
 func (player *Player) GetNote(channel int, row int) *Note {
     pattern := &player.S3M.Patterns[player.GetPattern()]
     return &pattern.Rows[row][player.S3M.ChannelMap[channel]]
+}
+
+func (player *Player) GetInstrument(index int) *Instrument {
+    if index < 0 || index >= len(player.S3M.Instruments) {
+        return nil
+    }
+    return &player.S3M.Instruments[index]
 }
 
 func (player *Player) Update(timeDelta float32) {
@@ -149,7 +293,10 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         S3M: file,
         Speed: int(file.InitialSpeed),
         BPM: int(file.InitialTempo),
+        SampleRate: sampleRate,
     }
+
+    // player.BPM = 15
 
     log.Printf("Channels %v", len(channels))
     for channelNum, index := range file.ChannelMap {
@@ -159,6 +306,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
             Player: player,
             AudioBuffer: common.MakeAudioBuffer(sampleRate),
             Volume: 1.0,
+            currentRow: -1,
             buffer: make([]float32, sampleRate),
         }
     }
@@ -169,7 +317,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         }
     }
 
-    player.Channels = channels
+    player.Channels = channels[:1]
 
     return player
 }
