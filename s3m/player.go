@@ -198,7 +198,7 @@ func (channel *Channel) Update(rate float32) {
     if channel.CurrentSample > 0 {
         instrument := channel.Player.GetInstrument(channel.CurrentSample)
         period := 8363 * channel.CurrentPeriod / int(instrument.MiddleC)
-        frequency := 14317056 / float32(period * 2)
+        frequency := 14317056 / float32(period)
         // frequency := amigaFrequency / float32(period * 2)
 
         // ???
