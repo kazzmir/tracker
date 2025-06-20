@@ -90,6 +90,20 @@ func (channel *Channel) UpdateRow() {
             }
 
             newPeriod = channel.CurrentPeriod
+        case EffectPortamentoDown:
+            channel.CurrentEffect = EffectPortamentoDown
+
+            if note.EffectParameter > 0 {
+                channel.PortamentoNote = int(note.EffectParameter)
+            }
+
+            if channel.PortamentoNote >> 4 == 0xf {
+                newPeriod += int(channel.PortamentoNote & 0xf) * 4
+                channel.CurrentEffect = EffectNone
+            } else if channel.PortamentoNote >> 4 == 0xe {
+                newPeriod += int(channel.PortamentoNote & 0xf)
+            }
+
         case EffectGlobalVolume:
             channel.Player.GlobalVolume = uint8(channel.EffectParameter & 0x3f)
             log.Printf("Set global volume to %v", channel.Player.GlobalVolume)
@@ -158,6 +172,10 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
         case EffectPortamentoToNote:
             if !changeRow {
                 channel.doPortamentoToNote(ticks)
+            }
+        case EffectPortamentoDown:
+            if !changeRow {
+                channel.CurrentPeriod += int(channel.PortamentoNote) * ticks * 4
             }
     }
 }

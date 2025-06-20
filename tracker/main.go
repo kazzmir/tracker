@@ -105,7 +105,7 @@ func MakeS3MEngine(s3mPlayer *s3m.Player, audioContext *audio.Context) (*Engine,
             return nil, err
         }
         playChannel.SetBufferSize(time.Second / 20)
-        playChannel.SetVolume(0.3)
+        playChannel.SetVolume(0.5)
         engine.Players = append(engine.Players, playChannel)
         // playChannel.Play()
     }
