@@ -250,6 +250,10 @@ func (player *Player) GetPattern() int {
 }
 
 func (player *Player) GetNote(channel int, row int) *Note {
+    if player.GetPattern() >= len(player.S3M.Patterns) {
+        return &Note{}
+    }
+
     pattern := &player.S3M.Patterns[player.GetPattern()]
     return &pattern.Rows[row][player.S3M.ChannelMap[channel]]
 }
