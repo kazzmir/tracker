@@ -286,29 +286,40 @@ func main(){
     if s3mFile != nil {
         s3mPlayer := s3m.MakePlayer(s3mFile, sampleRate)
 
-        ebiten.SetTPS(60)
-        ebiten.SetWindowSize(800, 800)
-        ebiten.SetWindowTitle("Mod Tracker")
-        // ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+        if *wav != "" {
+            log.Printf("Rendering to %v", *wav)
 
-        audioContext := audio.NewContext(sampleRate)
+            err := saveToWav(*wav, s3mPlayer.RenderToPCM(), sampleRate)
+            if err != nil {
+                log.Printf("Error saving to wav: %v", err)
+                return
+            }
+        } else {
 
-        /*
-        modPlayer.CurrentOrder = 0x10
-        modPlayer.Channels[0].Mute = true
-        modPlayer.Channels[1].Mute = true
-        modPlayer.Channels[3].Mute = true
-        */
+            ebiten.SetTPS(60)
+            ebiten.SetWindowSize(800, 800)
+            ebiten.SetWindowTitle("Mod Tracker")
+            // ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
-        engine, err := MakeS3MEngine(s3mPlayer, audioContext)
-        if err != nil {
-            log.Printf("Error creating engine: %v", err)
-            return
-        }
+            audioContext := audio.NewContext(sampleRate)
 
-        err = ebiten.RunGame(engine)
-        if err != nil {
-            log.Printf("Error: %v", err)
+            /*
+            modPlayer.CurrentOrder = 0x10
+            modPlayer.Channels[0].Mute = true
+            modPlayer.Channels[1].Mute = true
+            modPlayer.Channels[3].Mute = true
+            */
+
+            engine, err := MakeS3MEngine(s3mPlayer, audioContext)
+            if err != nil {
+                log.Printf("Error creating engine: %v", err)
+                return
+            }
+
+            err = ebiten.RunGame(engine)
+            if err != nil {
+                log.Printf("Error: %v", err)
+            }
         }
     } else if modFile != nil {
 

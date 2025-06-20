@@ -741,36 +741,6 @@ func (player *Player) Update(timeDelta float32) {
     }
 }
 
-type ReaderFunc struct {
-    Func func(data []byte) (int, error)
-}
-
-func (reader *ReaderFunc) Read(data []byte) (int, error) {
-    if reader.Func == nil {
-        return 0, io.EOF
-    }
-    return reader.Func(data)
-}
-
-// returns the number of floats copied
-func copyFloat32(dst []byte, src []float32) int {
-    maxBytes := min(len(dst), len(src) * 4)
-
-    for i := range src {
-        if i * 4 >= maxBytes {
-            return i
-        }
-
-        bits := math.Float32bits(src[i])
-        dst[i*4+0] = byte(bits)
-        dst[i*4+1] = byte(bits >> 8)
-        dst[i*4+2] = byte(bits >> 16)
-        dst[i*4+3] = byte(bits >> 24)
-    }
-
-    return len(src)
-}
-
 // using this function turns out to be quite slow, its faster to use min/max
 func clamp(value float32, min float32, max float32) float32 {
     if value < min {
@@ -841,7 +811,7 @@ func (player *Player) RenderToPCM() io.Reader {
 
             // log.Printf("Partial Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
 
-            amount := copyFloat32(data, part)
+            amount := common.CopyFloat32(data, part)
 
             /*
             amount := min(len(data), len(part))
@@ -860,13 +830,13 @@ func (player *Player) RenderToPCM() io.Reader {
 
         // copy the mix into the data buffer
         // log.Printf("Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
-        amount := copyFloat32(data, mix)
+        amount := common.CopyFloat32(data, mix)
         mixPosition += amount
 
         return amount * 4, nil
     }
 
-    return &ReaderFunc{
+    return &common.ReaderFunc{
         Func: reader,
     }
 }

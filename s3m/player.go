@@ -1,6 +1,7 @@
 package s3m
 
 import (
+    "io"
     "log"
     "math"
     "runtime"
@@ -208,6 +209,42 @@ type Player struct {
     ticks float32
 }
 
+func MakePlayer(file *S3MFile, sampleRate int) *Player {
+    channels := make([]*Channel, len(file.ChannelMap))
+
+    player := &Player{
+        S3M: file,
+        Speed: int(file.InitialSpeed),
+        BPM: int(file.InitialTempo),
+        SampleRate: sampleRate,
+    }
+
+    // player.BPM = 15
+
+    log.Printf("Channels %v", len(channels))
+    for channelNum, index := range file.ChannelMap {
+        log.Printf("Create channel %v", index)
+        channels[index] = &Channel{
+            Channel: channelNum,
+            Player: player,
+            AudioBuffer: common.MakeAudioBuffer(sampleRate),
+            Volume: 1.0,
+            buffer: make([]float32, sampleRate),
+            currentRow: -1,
+        }
+    }
+
+    for i, channel := range channels {
+        if channel == nil {
+            log.Printf("Did not create a channel %v", i)
+        }
+    }
+
+    player.Channels = channels
+
+    return player
+}
+
 func (player *Player) GetPattern() int {
     return int(player.S3M.Orders[player.CurrentOrder])
 }
@@ -302,38 +339,91 @@ func (player *Player) GetCurrentOrder() int {
     return 0
 }
 
-func MakePlayer(file *S3MFile, sampleRate int) *Player {
-    channels := make([]*Channel, len(file.ChannelMap))
+func (player *Player) RenderToPCM() io.Reader {
+    // make a buffer to hold 1/100th of a second of audio data, which is 4-bytes per sample
+    // and 1 samples per channel
+    rate := 100
+    buffer := make([]float32, player.SampleRate / rate)
+    mix := make([]float32, player.SampleRate * 2 / rate)
 
-    player := &Player{
-        S3M: file,
-        Speed: int(file.InitialSpeed),
-        BPM: int(file.InitialTempo),
-        SampleRate: sampleRate,
-    }
-
-    // player.BPM = 15
-
-    log.Printf("Channels %v", len(channels))
-    for channelNum, index := range file.ChannelMap {
-        log.Printf("Create channel %v", index)
-        channels[index] = &Channel{
-            Channel: channelNum,
-            Player: player,
-            AudioBuffer: common.MakeAudioBuffer(sampleRate),
-            Volume: 1.0,
-            buffer: make([]float32, sampleRate),
-            currentRow: -1,
+    fillMix := func() bool {
+        if player.OrdersPlayed >= player.S3M.SongLength {
+            return false
         }
-    }
 
-    for i, channel := range channels {
-        if channel == nil {
-            log.Printf("Did not create a channel %v", i)
+        player.Update(1.0 / float32(rate))
+
+        for i := range mix {
+            mix[i] = 0
         }
+
+        for _, channel := range player.Channels {
+            amount := channel.AudioBuffer.Read(buffer)
+
+            // log.Printf("Channel %v produced %v samples", chNumber, amount)
+
+            if amount > 0 {
+                // copy the samples into the mix buffer
+                normalizer := float32(len(player.Channels))
+                for i := range amount {
+                    // mono to stereo
+                    mixed := mix[i*2+0] + buffer[i] / normalizer
+                    mix[i*2+0] = mixed
+                    mix[i*2+1] = mixed
+                }
+            }
+        }
+
+        for i := range mix {
+            mix[i] = max(min(mix[i], 1), -1)
+            // mix[i] = float32(math.Tanh(float64(mix[i])))
+        }
+
+        return true
     }
 
-    player.Channels = channels
+    mixPosition := len(mix)
+    reader := func(data []byte) (int, error) {
+        if len(data) == 0 {
+            return 0, nil
+        }
 
-    return player
+        if player.OrdersPlayed >= player.S3M.SongLength {
+            return 0, io.EOF
+        }
+
+        // wait for the music to be produced
+        if mixPosition < len(mix) {
+            part := mix[mixPosition:]
+
+            // log.Printf("Partial Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
+
+            amount := common.CopyFloat32(data, part)
+
+            /*
+            amount := min(len(data), len(part))
+            copy(data, part[:amount])
+            */
+            mixPosition += amount
+            return amount * 4, nil
+        }
+
+        mixPosition = 0
+
+        more := fillMix()
+        if !more {
+            return 0, io.EOF
+        }
+
+        // copy the mix into the data buffer
+        // log.Printf("Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
+        amount := common.CopyFloat32(data, mix)
+        mixPosition += amount
+
+        return amount * 4, nil
+    }
+
+    return &common.ReaderFunc{
+        Func: reader,
+    }
 }
