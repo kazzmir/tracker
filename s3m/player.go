@@ -9,15 +9,15 @@ import (
 )
 
 var Octaves []int = []int{
-    27392,25856,24384,23040,21696,20480,19328,18240,17216,16256,15360,14496,
-    13696,12928,12192,11520,10848,10240, 9664, 9120, 8608, 8128, 7680, 7248,
-    6848, 6464, 6096, 5760, 5424, 5120, 4832, 4560, 4304, 4064, 3840, 3624,
-    3424, 3232, 3048, 2880, 2712, 2560, 2416, 2280, 2152, 2032, 1920, 1812,
-    1712, 1616, 1524, 1440, 1356, 1280, 1208, 1140, 1076, 1016,  960,  906,
-    856,  808,  762,  720,  678,  640,  604,  570,  538,  508,  480,  453,
-    428,  404,  381,  360,  339,  320,  302,  285,  269,  254,  240,  226,
-    214,  202,  190,  180,  170,  160,  151,  143,  135,  127,  120,  113,
-    107,  101,   95,   90,   85,   80,   75,   71,   67,   63,   60,   56,
+    27392,25856,24384,23040,21696,20480,19328,18240,17216,16256,15360,14496, 0, 0, 0, 0,
+    13696,12928,12192,11520,10848,10240, 9664, 9120, 8608, 8128, 7680, 7248, 0, 0, 0, 0,
+    6848, 6464, 6096, 5760, 5424, 5120, 4832, 4560, 4304, 4064, 3840, 3624, 0, 0, 0, 0,
+    3424, 3232, 3048, 2880, 2712, 2560, 2416, 2280, 2152, 2032, 1920, 1812, 0, 0, 0, 0,
+    1712, 1616, 1524, 1440, 1356, 1280, 1208, 1140, 1076, 1016,  960,  906, 0, 0, 0, 0,
+    856,  808,  762,  720,  678,  640,  604,  570,  538,  508,  480,  453, 0, 0, 0, 0,
+    428,  404,  381,  360,  339,  320,  302,  285,  269,  254,  240,  226, 0, 0, 0, 0,
+    214,  202,  190,  180,  170,  160,  151,  143,  135,  127,  120,  113, 0, 0, 0, 0,
+    107,  101,   95,   90,   85,   80,   75,   71,   67,   63,   60,   56, 0, 0, 0, 0,
 }
 
 type Channel struct {
@@ -39,7 +39,7 @@ func (channel *Channel) UpdateRow() {
 
     channel.CurrentNote = channel.Player.GetNote(channel.Channel, channel.currentRow)
 
-    if channel.CurrentNote != nil && channel.CurrentNote.Note != 0 {
+    if channel.CurrentNote != nil && channel.CurrentNote.HasNote {
         log.Printf("Channel %v row %v play %+v", channel.Channel, channel.currentRow, channel.CurrentNote)
         channel.startPosition = 0.0
     }
@@ -56,14 +56,17 @@ func (channel *Channel) Update(rate float32) {
     channel.AudioBuffer.Lock()
 
     // if channel.CurrentNote != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
-    if channel.CurrentNote != nil && channel.CurrentNote.Note > 0 {
+    if channel.CurrentNote != nil && channel.CurrentNote.HasNote {
         instrument := channel.Player.GetInstrument(channel.CurrentNote.SampleNumber-1)
-        period := 8363 * Octaves[channel.CurrentNote.Note-1] / int(instrument.MiddleC) // 0 is no note, 1 is C-0
-        frequency := 14317056 / float32(period)
+        period := 8363 * Octaves[channel.CurrentNote.Note] / int(instrument.MiddleC) // 0 is no note, 1 is C-0
+        const amigaFrequency = 7159090.5
+        frequency := 14317056 / float32(period * 2)
+        // frequency := amigaFrequency / float32(period * 2)
 
-        // frequency = 4000
+        // ???
+        // frequency /= 2
 
-        log.Printf("Octave %v Frequency %v", Octaves[channel.CurrentNote.Note-1], frequency)
+        log.Printf("Note %v Octave %v Frequency %v MiddleC %v", channel.CurrentNote.Note, Octaves[channel.CurrentNote.Note], frequency, instrument.MiddleC)
 
         /*
         if channel.CurrentEffect == EffectVibrato {
@@ -99,6 +102,8 @@ func (channel *Channel) Update(rate float32) {
                 if channel.CurrentNote.Volume > 0 {
                     noteVolume = float32(channel.CurrentNote.Volume) / 64
                 }
+
+                // noteVolume = 1
 
                 channel.AudioBuffer.UnsafeWrite(instrument.Data[position] * channel.Volume * noteVolume)
                 channel.startPosition += incrementRate
@@ -209,7 +214,7 @@ func (player *Player) GetInstrument(index int) *Instrument {
 }
 
 func (player *Player) Update(timeDelta float32) {
-    oldRow := player.CurrentRow
+    // oldRow := player.CurrentRow
     oldTicks := int(player.ticks)
 
     if player.CurrentRow < 0 {
@@ -253,7 +258,7 @@ func (player *Player) Update(timeDelta float32) {
 
     for _, channel := range player.Channels {
         changeRow := false
-        if oldRow != channel.currentRow {
+        if player.CurrentRow != channel.currentRow {
             channel.UpdateRow()
             changeRow = true
         }
@@ -306,8 +311,8 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
             Player: player,
             AudioBuffer: common.MakeAudioBuffer(sampleRate),
             Volume: 1.0,
-            currentRow: -1,
             buffer: make([]float32, sampleRate),
+            currentRow: -1,
         }
     }
 
@@ -317,7 +322,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         }
     }
 
-    player.Channels = channels[:1]
+    player.Channels = channels
 
     return player
 }

@@ -22,6 +22,7 @@ type Instrument struct {
 
 type Note struct {
     SampleNumber int
+    HasNote bool
     Note int // 0-120, 0 is C-1
     Volume int // 0-64
     EffectNumber uint8 // 0-15
@@ -465,6 +466,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
             }
 
             var note uint8
+            hasNote := false
             var instrument uint8
             var volume uint8
             var effect uint8
@@ -472,6 +474,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
 
             channel := marker & 31
             if marker & 32 != 0 {
+                hasNote = true
                 note, err = buffer.ReadByte()
                 if err != nil {
                     return nil, err
@@ -503,6 +506,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
             noteObject := Note{
                 SampleNumber: int(instrument),
                 Note: int(note),
+                HasNote: hasNote,
                 Volume: int(volume),
                 EffectNumber: effect,
                 EffectParameter: effectParameter,
