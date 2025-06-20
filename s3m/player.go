@@ -79,6 +79,8 @@ func (channel *Channel) UpdateRow() {
         case EffectNone:
         case EffectSetSpeed:
             channel.Player.Speed = channel.EffectParameter
+        case EffectSetTempo:
+            channel.Player.BPM = channel.EffectParameter
         case EffectPortamentoToNote:
             channel.CurrentEffect = EffectPortamentoToNote
             if note.EffectParameter > 0 {
