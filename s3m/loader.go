@@ -9,6 +9,10 @@ import (
     "io"
 )
 
+const (
+    EffectNone int = -1
+)
+
 type Instrument struct {
     Name string
     MiddleC uint16
@@ -22,11 +26,18 @@ type Instrument struct {
 
 type Note struct {
     SampleNumber int
-    HasNote bool
+    ChangeSample bool
+
+    ChangeNote bool
     Note int // 0-120, 0 is C-1
+
+    ChangeVolume bool
     Volume int // 0-64
+
+    ChangeEffect bool
     EffectNumber uint8 // 0-15
     EffectParameter uint8 // 0-255
+
     Channel int // 0-31
 }
 
@@ -467,6 +478,9 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
 
             var note uint8
             hasNote := false
+            hasSample := false
+            hasVolume := false
+            hasEffect := false
             var instrument uint8
             var volume uint8
             var effect uint8
@@ -475,6 +489,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
             channel := marker & 31
             if marker & 32 != 0 {
                 hasNote = true
+                hasSample = true
                 note, err = buffer.ReadByte()
                 if err != nil {
                     return nil, err
@@ -486,6 +501,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
             }
 
             if marker & 64 != 0 {
+                hasVolume = true
                 volume, err = buffer.ReadByte()
                 if err != nil {
                     return nil, err
@@ -493,6 +509,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
             }
 
             if marker & 128 != 0 {
+                hasEffect = true
                 effect, err = buffer.ReadByte()
                 if err != nil {
                     return nil, err
@@ -505,9 +522,12 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
 
             noteObject := Note{
                 SampleNumber: int(instrument),
+                ChangeSample: hasSample,
                 Note: int(note),
-                HasNote: hasNote,
+                ChangeNote: hasNote,
                 Volume: int(volume),
+                ChangeVolume: hasVolume,
+                ChangeEffect: hasEffect,
                 EffectNumber: effect,
                 EffectParameter: effectParameter,
                 Channel: int(channel),

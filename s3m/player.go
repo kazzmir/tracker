@@ -35,6 +35,8 @@ type Channel struct {
     CurrentNote int
     CurrentSample int
     CurrentVolume int
+    CurrentEffect int
+    EffectParameter int
 
     currentRow int
     startPosition float32
@@ -45,18 +47,30 @@ func (channel *Channel) UpdateRow() {
 
     note := channel.Player.GetNote(channel.Channel, channel.currentRow)
 
+    channel.CurrentEffect = EffectNone
+    channel.EffectParameter = 0
+
     channel.CurrentVolume = 64
-    if note.Volume > 0 {
+    if note.ChangeVolume {
         channel.CurrentVolume = note.Volume
     }
 
-    if note.HasNote {
+    if note.ChangeEffect {
+        channel.CurrentEffect = int(note.EffectNumber)
+        channel.EffectParameter = int(note.EffectParameter)
+    }
+
+    if note.ChangeNote {
         channel.CurrentNote = note.Note
         channel.startPosition = 0.0
     }
 
-    if note.SampleNumber > 0 {
+    if note.ChangeSample {
         channel.CurrentSample = note.SampleNumber - 1
+    }
+
+    if channel.CurrentEffect != EffectNone {
+        log.Printf("Channel %v unknown effect %v with parameter %v", channel.Channel, channel.CurrentEffect, channel.EffectParameter)
     }
 }
 
