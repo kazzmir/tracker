@@ -37,8 +37,10 @@ type S3MFile struct {
     Instruments []Instrument
     Patterns []Pattern
     Orders []byte
+    SongLength int
     InitialSpeed uint8
     InitialTempo uint8
+    ChannelMap map[int]int // maps channel number to channel index
 }
 
 func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
@@ -511,6 +513,8 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
         Instruments: instruments,
         Patterns: patterns,
         Orders: orders,
+        ChannelMap: channelMap,
+        SongLength: len(orders),
         InitialSpeed: initialSpeed,
         InitialTempo: initialTempo,
     }, nil
