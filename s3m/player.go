@@ -32,13 +32,15 @@ type Channel struct {
     buffer []float32 // used for reading audio data
     Mute bool
 
-    CurrentNote int
+    CurrentPeriod int
     CurrentSample int
     CurrentVolume int
     CurrentEffect int
     EffectParameter int
 
     VolumeSlide uint8
+    PortamentoToNote uint8
+    PortamentoNote int
 
     currentRow int
     startPosition float32
@@ -52,6 +54,8 @@ func (channel *Channel) UpdateRow() {
     channel.CurrentEffect = EffectNone
     channel.EffectParameter = 0
 
+    newPeriod := channel.CurrentPeriod
+
     channel.CurrentVolume = 64
     if note.ChangeVolume {
         channel.CurrentVolume = note.Volume
@@ -63,7 +67,7 @@ func (channel *Channel) UpdateRow() {
     }
 
     if note.ChangeNote {
-        channel.CurrentNote = note.Note
+        newPeriod = Octaves[note.Note]
         channel.startPosition = 0.0
     }
 
@@ -72,8 +76,20 @@ func (channel *Channel) UpdateRow() {
     }
 
     switch channel.CurrentEffect {
+        case EffectNone:
         case EffectSetSpeed:
             channel.Player.Speed = channel.EffectParameter
+        case EffectPortamentoToNote:
+            channel.CurrentEffect = EffectPortamentoToNote
+            if note.EffectParameter > 0 {
+                channel.PortamentoToNote = note.EffectParameter
+            }
+
+            if note.ChangeNote {
+                channel.PortamentoNote = Octaves[note.Note]
+            }
+
+            newPeriod = channel.CurrentPeriod
         case EffectGlobalVolume:
             channel.Player.GlobalVolume = uint8(channel.EffectParameter & 0x3f)
             log.Printf("Set global volume to %v", channel.Player.GlobalVolume)
@@ -86,6 +102,8 @@ func (channel *Channel) UpdateRow() {
         default:
             log.Printf("Channel %v unknown effect %v with parameter %v", channel.Channel, channel.CurrentEffect, channel.EffectParameter)
     }
+
+    channel.CurrentPeriod = newPeriod
 }
 
 func (channel *Channel) doVolumeSlide(changeRow bool) {
@@ -116,10 +134,31 @@ func (channel *Channel) doVolumeSlide(changeRow bool) {
     }
 }
 
+func (channel *Channel) doPortamentoToNote(ticks int) {
+    // FIXME: the rate of portamento is not correct. The docs say portamento*4, but that is too slow
+
+    // log.Printf("portamento from %v to %v by %v", channel.CurrentPeriod, channel.PortamentoNote, int(channel.PortamentoToNote) * 4 * 2)
+    if channel.CurrentPeriod < channel.PortamentoNote {
+        channel.CurrentPeriod += int(channel.PortamentoToNote) * ticks * 4 * 2
+        if channel.CurrentPeriod > channel.PortamentoNote {
+            channel.CurrentPeriod = channel.PortamentoNote
+        }
+    } else if channel.CurrentPeriod > channel.PortamentoNote {
+        channel.CurrentPeriod -= int(channel.PortamentoToNote) * ticks * 4 * 2
+        if channel.CurrentPeriod < channel.PortamentoNote {
+            channel.CurrentPeriod = channel.PortamentoNote
+        }
+    }
+}
+
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
     switch channel.CurrentEffect {
         case EffectVolumeSlide:
             channel.doVolumeSlide(changeRow)
+        case EffectPortamentoToNote:
+            if !changeRow {
+                channel.doPortamentoToNote(ticks)
+            }
     }
 }
 
@@ -133,7 +172,7 @@ func (channel *Channel) Update(rate float32) {
     // if channel.CurrentNote != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
     if channel.CurrentSample > 0 {
         instrument := channel.Player.GetInstrument(channel.CurrentSample)
-        period := 8363 * Octaves[channel.CurrentNote] / int(instrument.MiddleC)
+        period := 8363 * channel.CurrentPeriod / int(instrument.MiddleC)
         frequency := 14317056 / float32(period * 2)
         // frequency := amigaFrequency / float32(period * 2)
 
@@ -302,7 +341,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
 
     player.Channels = channels
 
-    player.S3M.SongLength = 1
+    // player.S3M.SongLength = 1
 
     return player
 }
@@ -340,7 +379,7 @@ func (player *Player) Update(timeDelta float32) {
 
     if player.ticks >= float32(player.Speed) {
         player.CurrentRow += 1
-        // log.Printf("Row: %v", player.CurrentRow)
+        log.Printf("Row: %v", player.CurrentRow)
         player.ticks -= float32(player.Speed)
     }
 
