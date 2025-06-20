@@ -8,6 +8,9 @@ import (
     "github.com/kazzmir/tracker/common"
 )
 
+// FIXME: what are the extra 4 values at the end of each octave for?
+// C-0 is definitely the first element in row 0, and B-0 is the 12th element.
+// C-1 is index 16, so between B-0 and C-1 are 4 values that are not used.
 var Octaves []int = []int{
     27392,25856,24384,23040,21696,20480,19328,18240,17216,16256,15360,14496, 0, 0, 0, 0,
     13696,12928,12192,11520,10848,10240, 9664, 9120, 8608, 8128, 7680, 7248, 0, 0, 0, 0,
