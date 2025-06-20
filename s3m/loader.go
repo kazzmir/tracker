@@ -510,6 +510,9 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
             if marker & 32 != 0 {
                 hasNote = true
                 hasSample = true
+                // set default volume
+                hasVolume = true
+                volume = 64
                 note, err = buffer.ReadByte()
                 if err != nil {
                     return nil, err

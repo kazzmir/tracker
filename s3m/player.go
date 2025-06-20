@@ -51,12 +51,14 @@ func (channel *Channel) UpdateRow() {
 
     note := channel.Player.GetNote(channel.Channel, channel.currentRow)
 
+    // log.Printf("Channel %v Play note %+v", channel.Channel, note)
+
     channel.CurrentEffect = EffectNone
     channel.EffectParameter = 0
 
     newPeriod := channel.CurrentPeriod
 
-    channel.CurrentVolume = 64
+    // channel.CurrentVolume = 64
     if note.ChangeVolume {
         channel.CurrentVolume = note.Volume
     }
@@ -92,6 +94,9 @@ func (channel *Channel) UpdateRow() {
             }
 
             newPeriod = channel.CurrentPeriod
+        case EffectPatternBreak:
+            channel.Player.NextOrder()
+            channel.Player.CurrentRow = channel.EffectParameter
         case EffectPortamentoDown:
             channel.CurrentEffect = EffectPortamentoDown
 
@@ -141,12 +146,12 @@ func (channel *Channel) doVolumeSlide(changeRow bool) {
         volumeAmount = -slideDown * (channel.Player.Speed - 1)
     }
 
-    channel.Volume += float32(volumeAmount) / 64.0
-    if channel.Volume < 0 {
-        channel.Volume = 0
+    channel.CurrentVolume += volumeAmount
+    if channel.CurrentVolume < 0 {
+        channel.CurrentVolume = 0
     }
-    if channel.Volume > 1 {
-        channel.Volume = 1
+    if channel.CurrentVolume > 64 {
+        channel.CurrentVolume = 64
     }
 }
 
@@ -209,6 +214,9 @@ func (channel *Channel) Update(rate float32) {
 
         incrementRate := frequency / float32(channel.Player.SampleRate)
 
+        noteVolume := float32(channel.CurrentVolume) / 64
+        // log.Printf("note volume %v", noteVolume)
+
         // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
 
         if incrementRate > 0 {
@@ -227,11 +235,6 @@ func (channel *Channel) Update(rate float32) {
                     } else {
                         break
                     }
-                }
-
-                noteVolume := float32(1.0)
-                if channel.CurrentVolume > 0 {
-                    noteVolume = float32(channel.CurrentVolume) / 64
                 }
 
                 // noteVolume = 1
@@ -359,7 +362,12 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         }
     }
 
-    player.Channels = channels
+    player.Channels = channels[:]
+
+    /*
+    player.S3M.Orders = []byte{20}
+    player.S3M.SongLength = 1
+    */
 
     // player.S3M.SongLength = 1
 
@@ -452,9 +460,17 @@ func (player *Player) Update(timeDelta float32) {
 }
 
 func (player *Player) NextOrder() {
+    player.CurrentOrder += 1
+    if player.CurrentOrder >= player.S3M.SongLength {
+        player.CurrentOrder = 0
+    }
 }
 
 func (player *Player) PreviousOrder() {
+    player.CurrentOrder -= 1
+    if player.CurrentOrder < 0 {
+        player.CurrentOrder = player.S3M.SongLength - 1
+    }
 }
 
 func (player *Player) ResetRow() {
