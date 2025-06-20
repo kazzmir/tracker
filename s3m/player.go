@@ -69,8 +69,11 @@ func (channel *Channel) UpdateRow() {
         channel.CurrentSample = note.SampleNumber - 1
     }
 
-    if channel.CurrentEffect != EffectNone {
-        log.Printf("Channel %v unknown effect %v with parameter %v", channel.Channel, channel.CurrentEffect, channel.EffectParameter)
+    switch channel.CurrentEffect {
+        case EffectSetSpeed:
+            channel.Player.Speed = channel.EffectParameter
+        default:
+            log.Printf("Channel %v unknown effect %v with parameter %v", channel.Channel, channel.CurrentEffect, channel.EffectParameter)
     }
 }
 
@@ -235,9 +238,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
 
     // player.BPM = 15
 
-    log.Printf("Channels %v", len(channels))
     for channelNum, index := range file.ChannelMap {
-        log.Printf("Create channel %v", index)
         channels[index] = &Channel{
             Channel: channelNum,
             Player: player,
@@ -255,6 +256,8 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
     }
 
     player.Channels = channels
+
+    player.S3M.SongLength = 1
 
     return player
 }

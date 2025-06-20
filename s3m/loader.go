@@ -10,7 +10,26 @@ import (
 )
 
 const (
-    EffectNone int = -1
+    EffectNone int = 0
+    EffectSetSpeed = 1
+    EffectPatternJump = 2
+    EffectPatternBreak = 3
+    EffectVolumeSlide = 4
+    EffectPortamentoDown = 5
+    EffectPortamentoUp = 6
+    EffectPortamentoToNote = 7
+    EffectVibrato = 8
+    EffectTremor = 9
+    EffectArpeggio = 10
+    EffectVibratoAndVolumeSlide = 11
+    EffectPortamentoAndVolumeSlide = 12
+    EffectSampleOffset = 15
+    EffectRetriggerAndVolumeSlide = 17
+    EffectTremolo = 18
+    EffectSetExtra = 19
+    EffectSetTempo = 20
+    EffectFineVibrato = 21
+    EffectGlobalVolume = 22
 )
 
 type Instrument struct {
