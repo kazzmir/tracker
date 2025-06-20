@@ -13,11 +13,19 @@ type Channel struct {
     Volume float32
     buffer []float32 // used for reading audio data
 
+    CurrentNote *Note
+
     currentRow int
 }
 
 func (channel *Channel) UpdateRow() {
     channel.currentRow = channel.Player.CurrentRow
+
+    channel.CurrentNote = channel.Player.GetNote(channel.Channel, channel.currentRow)
+
+    if channel.CurrentNote != nil && channel.CurrentNote.Note != 0 {
+        log.Printf("Channel %v play %v", channel.Channel, channel.CurrentNote)
+    }
 }
 
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
@@ -49,6 +57,11 @@ type Player struct {
 
 func (player *Player) GetPattern() int {
     return int(player.S3M.Orders[player.CurrentOrder])
+}
+
+func (player *Player) GetNote(channel int, row int) *Note {
+    pattern := &player.S3M.Patterns[player.GetPattern()]
+    return &pattern.Rows[row][player.S3M.ChannelMap[channel]]
 }
 
 func (player *Player) Update(timeDelta float32) {
