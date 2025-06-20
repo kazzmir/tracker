@@ -37,6 +37,8 @@ type S3MFile struct {
     Instruments []Instrument
     Patterns []Pattern
     Orders []byte
+    InitialSpeed uint8
+    InitialTempo uint8
 }
 
 func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
@@ -509,5 +511,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
         Instruments: instruments,
         Patterns: patterns,
         Orders: orders,
+        InitialSpeed: initialSpeed,
+        InitialTempo: initialTempo,
     }, nil
 }
