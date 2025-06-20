@@ -38,6 +38,8 @@ type Channel struct {
     CurrentEffect int
     EffectParameter int
 
+    VolumeSlide uint8
+
     currentRow int
     startPosition float32
 }
@@ -72,12 +74,53 @@ func (channel *Channel) UpdateRow() {
     switch channel.CurrentEffect {
         case EffectSetSpeed:
             channel.Player.Speed = channel.EffectParameter
+        case EffectGlobalVolume:
+            channel.Player.GlobalVolume = uint8(channel.EffectParameter & 0x3f)
+            log.Printf("Set global volume to %v", channel.Player.GlobalVolume)
+        case EffectVolumeSlide:
+            channel.CurrentEffect = EffectVolumeSlide
+
+            if note.EffectParameter > 0 {
+                channel.VolumeSlide = note.EffectParameter
+            }
         default:
             log.Printf("Channel %v unknown effect %v with parameter %v", channel.Channel, channel.CurrentEffect, channel.EffectParameter)
     }
 }
 
+func (channel *Channel) doVolumeSlide(changeRow bool) {
+    volumeAmount := 0
+
+    slideUp := int(channel.VolumeSlide >> 4)
+    slideDown := int(channel.VolumeSlide & 0xf)
+
+    if slideUp == 0xf {
+        volumeAmount = -slideDown
+        if slideDown == 0xf {
+            volumeAmount = slideUp
+        }
+    } else if slideDown == 0xf {
+        volumeAmount = slideUp
+    } else if slideUp > 0 {
+        volumeAmount = slideUp * (channel.Player.Speed - 1)
+    } else if slideDown > 0 {
+        volumeAmount = -slideDown * (channel.Player.Speed - 1)
+    }
+
+    channel.Volume += float32(volumeAmount) / 64.0
+    if channel.Volume < 0 {
+        channel.Volume = 0
+    }
+    if channel.Volume > 1 {
+        channel.Volume = 1
+    }
+}
+
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
+    switch channel.CurrentEffect {
+        case EffectVolumeSlide:
+            channel.doVolumeSlide(changeRow)
+    }
 }
 
 func (channel *Channel) Update(rate float32) {
@@ -134,7 +177,7 @@ func (channel *Channel) Update(rate float32) {
 
                 // noteVolume = 1
 
-                channel.AudioBuffer.UnsafeWrite(instrument.Data[position] * channel.Volume * noteVolume)
+                channel.AudioBuffer.UnsafeWrite(instrument.Data[position] * channel.Volume * noteVolume * float32(channel.Player.GlobalVolume) / 64)
                 channel.startPosition += incrementRate
                 samplesWritten += 1
             }
@@ -220,6 +263,7 @@ type Player struct {
     Speed int
     BPM int
 
+    GlobalVolume uint8
     CurrentRow int
     CurrentOrder int
     OrdersPlayed int
@@ -234,6 +278,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         Speed: int(file.InitialSpeed),
         BPM: int(file.InitialTempo),
         SampleRate: sampleRate,
+        GlobalVolume: file.GlobalVolume,
     }
 
     // player.BPM = 15

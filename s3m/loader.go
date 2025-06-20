@@ -72,6 +72,7 @@ type S3MFile struct {
     InitialSpeed uint8
     InitialTempo uint8
     ChannelMap map[int]int // maps channel number to channel index
+    GlobalVolume uint8
 }
 
 func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
@@ -473,7 +474,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
             return nil, err
         }
 
-        log.Printf("Pattern %v length 0x%x", len(patterns), patternLength)
+        // log.Printf("Pattern %v length 0x%x", len(patterns), patternLength)
 
         limit := io.LimitReader(reader_, int64(patternLength))
         buffer := bufio.NewReader(limit)
@@ -570,5 +571,6 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
         SongLength: len(orders),
         InitialSpeed: initialSpeed,
         InitialTempo: initialTempo,
+        GlobalVolume: globalVolume,
     }, nil
 }
