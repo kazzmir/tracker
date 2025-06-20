@@ -195,6 +195,26 @@ func saveToWav(path string, reader io.Reader, sampleRate int) error {
     return err
 }
 
+func tryLoadS3m(path string) (*s3m.S3MFile, error) {
+    file, err := os.Open(path)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+
+    return s3m.Load(file)
+}
+
+func tryLoadMod(path string) (*mod.ModFile, error) {
+    file, err := os.Open(path)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+
+    return mod.Load(file)
+}
+
 func main(){
     log.SetFlags(log.Lshortfile | log.Ldate | log.Lmicroseconds)
 
@@ -228,16 +248,13 @@ func main(){
 
     if len(flag.Args()) > 0 {
         path := flag.Args()[0]
-        file, err := os.Open(path)
-        if err != nil {
-            log.Printf("Error opening %v: %v", path, err)
-        }
+        var err error
 
-        s3mFile, err = s3m.Load(file)
+        s3mFile, err = tryLoadS3m(path)
         if err != nil {
             log.Printf("Unable to load s3m: %v", err)
 
-            modFile, err = mod.Load(file)
+            modFile, err = tryLoadMod(path)
             if err != nil {
                 log.Printf("Error loading %v: %v", path, err)
                 return
