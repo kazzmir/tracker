@@ -419,13 +419,13 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
                 Data: floatData,
             })
 
-            log.Printf("Instrument %v data %v", i, len(floatData))
+            log.Printf("Instrument %v loop begin %v end %v", i, loopBegin, loopEnd)
         } else {
             instruments = append(instruments, Instrument{
             })
         }
 
-        log.Printf("Instrument %v: type %v", i, type_)
+        // log.Printf("Instrument %v: type %v", i, type_)
     }
 
     var patterns []Pattern

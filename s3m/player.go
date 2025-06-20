@@ -31,7 +31,9 @@ type Channel struct {
     buffer []float32 // used for reading audio data
     Mute bool
 
-    CurrentNote *Note
+    CurrentNote int
+    CurrentSample int
+    CurrentVolume int
 
     currentRow int
     startPosition float32
@@ -40,11 +42,20 @@ type Channel struct {
 func (channel *Channel) UpdateRow() {
     channel.currentRow = channel.Player.CurrentRow
 
-    channel.CurrentNote = channel.Player.GetNote(channel.Channel, channel.currentRow)
+    note := channel.Player.GetNote(channel.Channel, channel.currentRow)
 
-    if channel.CurrentNote != nil && channel.CurrentNote.HasNote {
-        log.Printf("Channel %v row %v play %+v", channel.Channel, channel.currentRow, channel.CurrentNote)
+    channel.CurrentVolume = 64
+    if note.Volume > 0 {
+        channel.CurrentVolume = note.Volume
+    }
+
+    if note.HasNote {
+        channel.CurrentNote = note.Note
         channel.startPosition = 0.0
+    }
+
+    if note.SampleNumber > 0 {
+        channel.CurrentSample = note.SampleNumber - 1
     }
 }
 
@@ -59,17 +70,16 @@ func (channel *Channel) Update(rate float32) {
     channel.AudioBuffer.Lock()
 
     // if channel.CurrentNote != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
-    if channel.CurrentNote != nil && channel.CurrentNote.HasNote {
-        instrument := channel.Player.GetInstrument(channel.CurrentNote.SampleNumber-1)
-        period := 8363 * Octaves[channel.CurrentNote.Note] / int(instrument.MiddleC) // 0 is no note, 1 is C-0
-        const amigaFrequency = 7159090.5
+    if channel.CurrentSample > 0 {
+        instrument := channel.Player.GetInstrument(channel.CurrentSample)
+        period := 8363 * Octaves[channel.CurrentNote] / int(instrument.MiddleC)
         frequency := 14317056 / float32(period * 2)
         // frequency := amigaFrequency / float32(period * 2)
 
         // ???
         // frequency /= 2
 
-        log.Printf("Note %v Octave %v Frequency %v MiddleC %v", channel.CurrentNote.Note, Octaves[channel.CurrentNote.Note], frequency, instrument.MiddleC)
+        // log.Printf("Note %v Octave %v Frequency %v MiddleC %v", channel.CurrentNote.Note, Octaves[channel.CurrentNote.Note], frequency, instrument.MiddleC)
 
         /*
         if channel.CurrentEffect == EffectVibrato {
@@ -89,21 +99,19 @@ func (channel *Channel) Update(rate float32) {
                     break
                 }
                 */
-                if position >= len(instrument.Data) /* || (instrument.LoopLength > 1 && position >= (channel.CurrentSample.LoopStart + channel.CurrentSample.LoopLength) * 2) */ {
-                    /*
-                    if channel.CurrentSample.LoopLength > 1 {
-                        channel.startPosition = float32(channel.CurrentSample.LoopStart * 2)
+                if position >= len(instrument.Data) || (instrument.LoopBegin > 1 && position >= instrument.LoopEnd) {
+                    // log.Printf("Position %v loop begin %v loop end %v", position, instrument.LoopBegin, instrument.LoopEnd)
+                    if instrument.LoopBegin > 1 {
+                        channel.startPosition = float32(instrument.LoopBegin)
                         position = int(channel.startPosition)
                     } else {
                         break
                     }
-                    */
-                    break
                 }
 
                 noteVolume := float32(1.0)
-                if channel.CurrentNote.Volume > 0 {
-                    noteVolume = float32(channel.CurrentNote.Volume) / 64
+                if channel.CurrentVolume > 0 {
+                    noteVolume = float32(channel.CurrentVolume) / 64
                 }
 
                 // noteVolume = 1
