@@ -23,9 +23,16 @@ import (
     "github.com/ebitenui/ebitenui"
 )
 
+type TrackerPlayer interface {
+    Update(float32)
+    NextOrder()
+    PreviousOrder()
+    ResetRow()
+    GetCurrentOrder() int
+}
+
 type Engine struct {
-    Player *mod.Player
-    S3MPlayer *s3m.Player
+    Player TrackerPlayer
 
     AudioContext *audio.Context
     UI *ebitenui.UI
@@ -72,8 +79,7 @@ func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, er
 
 func MakeS3MEngine(s3mPlayer *s3m.Player, audioContext *audio.Context) (*Engine, error) {
     engine := &Engine{
-        // Player: modPlayer,
-        S3MPlayer: s3mPlayer,
+        Player: s3mPlayer,
         AudioContext: audioContext,
     }
 
@@ -117,13 +123,13 @@ func (engine *Engine) Update() error {
             case ebiten.KeyEscape, ebiten.KeyCapsLock:
                 return ebiten.Termination
             case ebiten.KeySpace:
-                engine.Player.CurrentRow = 0
+                engine.Player.ResetRow()
             case ebiten.KeyLeft:
                 engine.Player.PreviousOrder()
-                log.Printf("New order: %d", engine.Player.CurrentOrder)
+                log.Printf("New order: %d", engine.Player.GetCurrentOrder())
             case ebiten.KeyRight:
                 engine.Player.NextOrder()
-                log.Printf("New order: %d", engine.Player.CurrentOrder)
+                log.Printf("New order: %d", engine.Player.GetCurrentOrder())
         }
     }
 

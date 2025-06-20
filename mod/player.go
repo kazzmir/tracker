@@ -674,6 +674,14 @@ func (player *Player) PreviousOrder() {
     }
 }
 
+func (player *Player) ResetRow() {
+    player.CurrentRow = 0
+}
+
+func (player *Player) GetCurrentOrder() int {
+    return player.CurrentOrder
+}
+
 func (player *Player) Update(timeDelta float32) {
     oldRow := player.CurrentRow
     oldTicks := int(player.ticks)
