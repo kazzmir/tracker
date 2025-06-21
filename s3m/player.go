@@ -136,8 +136,8 @@ func (channel *Channel) UpdateRow() {
             channel.CurrentEffect = EffectRetriggerAndVolumeSlide
             channel.VolumeSlide = note.EffectParameter >> 4
             channel.Retrigger = int(note.EffectParameter & 0xf)
-        case EffectPortamentoDown:
-            channel.CurrentEffect = EffectPortamentoDown
+        case EffectPortamentoDown, EffectPortamentoUp:
+            // channel.CurrentEffect = EffectPortamentoDown
 
             if note.EffectParameter > 0 {
                 channel.PortamentoNote = int(note.EffectParameter)
@@ -242,6 +242,13 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
         case EffectPortamentoDown:
             if !changeRow {
                 channel.CurrentPeriod += int(channel.PortamentoNote) * ticks * 4
+            }
+        case EffectPortamentoUp:
+            if !changeRow {
+                channel.CurrentPeriod -= int(channel.PortamentoNote) * ticks * 4
+                if channel.CurrentPeriod < 56 {
+                    channel.CurrentPeriod = 56
+                }
             }
         case EffectRetriggerAndVolumeSlide:
             if !changeRow && channel.Retrigger > 0 && ticks % channel.Retrigger == 0 {
