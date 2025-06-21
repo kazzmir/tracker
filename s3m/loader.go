@@ -474,9 +474,9 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
 
     for _, offset := range patternOffsets {
         var pattern Pattern
-        _, err := reader_.Seek(int64(offset << 4), io.SeekStart)
+        _, err := reader_.Seek(int64(offset) << 4, io.SeekStart)
         if err != nil {
-            return nil, err
+            return nil, fmt.Errorf("Could not seek to 0x%x for pattern %v: %v", offset << 4, len(patterns), err)
         }
 
         var patternLength uint16
@@ -487,7 +487,9 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
 
         // log.Printf("Pattern %v length 0x%x", len(patterns), patternLength)
 
-        limit := io.LimitReader(reader_, int64(patternLength))
+        // hack: some s3m files assume the pattern length includes the length bytes and some do not
+        // for now just add 2 extra bytes and hope we read the rows properly
+        limit := io.LimitReader(reader_, int64(patternLength) + 2)
         buffer := bufio.NewReader(limit)
 
         rows := make([]Note, channelCount)
