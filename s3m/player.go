@@ -122,6 +122,8 @@ func (channel *Channel) UpdateRow() {
         case EffectPatternBreak:
             channel.Player.NextOrder()
             channel.Player.CurrentRow = channel.EffectParameter
+        case EffectSampleOffset:
+            channel.startPosition = float32(channel.EffectParameter) * 0x100
         case EffectPortamentoDown:
             channel.CurrentEffect = EffectPortamentoDown
 
