@@ -226,6 +226,8 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
 
             channelCount += 1
 
+            log.Printf("Channel %v default panning %v", i, setting)
+
             if setting <= 7 {
                 // pan left
             } else {
@@ -298,6 +300,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
         for i := range data {
             // only use lower 4 bits
             data[i] = data[i] & 0xf
+            log.Printf("Panning for channel %v: %v", i, data[i])
         }
         // FIXME: do something with panning data
     }

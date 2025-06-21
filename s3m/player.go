@@ -79,7 +79,7 @@ func (channel *Channel) UpdateRow() {
 
     note := channel.Player.GetNote(channel.Channel, channel.currentRow)
 
-    // log.Printf("Channel %v Play note %+v", channel.Channel, note)
+    // log.Printf("Channel %v row %v Play note %+v", channel.Channel, channel.currentRow, note)
 
     channel.CurrentEffect = EffectNone
     channel.EffectParameter = 0
@@ -214,12 +214,12 @@ func (channel *Channel) doPortamentoToNote(ticks int) {
 
     // log.Printf("portamento from %v to %v by %v", channel.CurrentPeriod, channel.PortamentoNote, int(channel.PortamentoToNote) * 4 * 2)
     if channel.CurrentPeriod < channel.PortamentoNote {
-        channel.CurrentPeriod += int(channel.PortamentoToNote) * ticks * 4 * 2
+        channel.CurrentPeriod += int(channel.PortamentoToNote) * ticks * 4
         if channel.CurrentPeriod > channel.PortamentoNote {
             channel.CurrentPeriod = channel.PortamentoNote
         }
     } else if channel.CurrentPeriod > channel.PortamentoNote {
-        channel.CurrentPeriod -= int(channel.PortamentoToNote) * ticks * 4 * 2
+        channel.CurrentPeriod -= int(channel.PortamentoToNote) * ticks * 4
         if channel.CurrentPeriod < channel.PortamentoNote {
             channel.CurrentPeriod = channel.PortamentoNote
         }
@@ -295,7 +295,7 @@ func (channel *Channel) Update(rate float32) {
     channel.AudioBuffer.Lock()
 
     // if channel.CurrentNote != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
-    if channel.CurrentSample > 0 && channel.CurrentPeriod > 0 {
+    if channel.CurrentSample >= 0 && channel.CurrentPeriod > 0 {
         instrument := channel.Player.GetInstrument(channel.CurrentSample)
         if instrument.MiddleC > 0 {
 
@@ -459,7 +459,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
     player.Channels = channels[:]
 
     /*
-    player.S3M.Orders = []byte{22}
+    player.S3M.Orders = []byte{1}
     player.S3M.SongLength = 1
     */
 
