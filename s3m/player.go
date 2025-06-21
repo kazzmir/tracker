@@ -142,7 +142,12 @@ func (channel *Channel) UpdateRow() {
                 channel.Vibrato.Depth = int(note.EffectParameter & 0xf)
             }
             channel.CurrentEffect = EffectVibrato
+        case EffectVibratoAndVolumeSlide:
+            if note.EffectParameter > 0 {
+                channel.VolumeSlide = note.EffectParameter
+            }
 
+            channel.CurrentEffect = EffectVibratoAndVolumeSlide
         case EffectGlobalVolume:
             channel.Player.GlobalVolume = uint8(channel.EffectParameter & 0x3f)
             log.Printf("Set global volume to %v", channel.Player.GlobalVolume)
@@ -208,6 +213,9 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
     switch channel.CurrentEffect {
         case EffectVolumeSlide:
             channel.doVolumeSlide(changeRow)
+        case EffectVibratoAndVolumeSlide:
+            channel.doVolumeSlide(changeRow)
+            channel.Vibrato.Update()
         case EffectVibrato:
             channel.Vibrato.Update()
         case EffectPortamentoToNote:
@@ -235,7 +243,7 @@ func (channel *Channel) Update(rate float32) {
 
             period := 8363 * channel.CurrentPeriod / int(instrument.MiddleC)
 
-            if channel.CurrentEffect == EffectVibrato {
+            if channel.CurrentEffect == EffectVibrato || channel.CurrentEffect == EffectVibratoAndVolumeSlide {
                 period = channel.Vibrato.Apply(period)
             }
 
