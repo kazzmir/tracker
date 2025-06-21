@@ -97,8 +97,13 @@ func (channel *Channel) UpdateRow() {
     }
 
     if note.ChangeNote {
-        newPeriod = Octaves[note.Note]
-        channel.startPosition = 0.0
+        if note.Note == 255 || note.Note == 254 {
+            log.Printf("channel %v note %v", channel.Channel, note.Note)
+            channel.CurrentSample = -1
+        } else {
+            newPeriod = Octaves[note.Note]
+            channel.startPosition = 0.0
+        }
     }
 
     if note.ChangeSample {
@@ -187,9 +192,12 @@ func (channel *Channel) doVolumeSlide(changeRow bool) {
     } else if slideDown == 0xf {
         volumeAmount = slideUp
     } else if slideUp > 0 {
-        volumeAmount = slideUp * (channel.Player.Speed - 1)
+        // FIXME: implement fast volume slides
+        // volumeAmount = slideUp * (channel.Player.Speed - 1)
+        volumeAmount = slideUp
     } else if slideDown > 0 {
-        volumeAmount = -slideDown * (channel.Player.Speed - 1)
+        // volumeAmount = -slideDown * (channel.Player.Speed - 1)
+        volumeAmount = -slideDown
     }
 
     channel.CurrentVolume += volumeAmount
@@ -444,7 +452,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
     player.Channels = channels[:]
 
     /*
-    player.S3M.Orders = []byte{21}
+    player.S3M.Orders = []byte{22}
     player.S3M.SongLength = 1
     */
 

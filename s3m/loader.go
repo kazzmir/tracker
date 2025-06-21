@@ -243,17 +243,23 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
         if err != nil {
             return nil, err
         }
+
+        // log.Printf("Got pattern %v", order)
+
         // pattern marker, ignore
         if order == 0xfe {
             continue
         }
         // end of song marker
         if order == 0xff {
-            break
+            // break
+            continue
         }
         orders = append(orders, order)
         numPatterns = max(numPatterns, int(order))
     }
+
+    // log.Printf("Song length before %v after %v", songLength, len(orders))
 
     songLength = uint16(len(orders))
 
@@ -270,7 +276,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
     }
 
     var patternOffsets []uint16
-    for range numPatterns {
+    for range numPatterns+1 {
         var offset uint16
         err := binary.Read(reader, binary.LittleEndian, &offset)
         if err != nil {
@@ -491,7 +497,17 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
                 return nil, err
             }
 
-            if marker == 0 {
+            // if len(patterns) == 54 {
+            //    log.Printf("row %v marker %v", row, marker)
+            // }
+
+            /*
+            if marker == 255 {
+                continue
+            }
+            */
+
+            if marker == 0 /* || marker == 255 */ {
                 pattern.Rows = append(pattern.Rows, rows)
                 rows = make([]Note, channelCount)
                 row += 1
@@ -558,11 +574,17 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
                 Channel: int(channel),
             }
 
-            if int(channel) >= len(channelMap) {
-                return nil, fmt.Errorf("Invalid channel number %v", channel)
-            }
+            // log.Printf("Read note %+v", noteObject)
 
-            rows[channelMap[int(channel)]] = noteObject
+            _, ok := channelMap[int(channel)]
+            /*
+            if !ok {
+                return nil, fmt.Errorf("Invalid channel number %v in pattern %v row %v", channel, len(patterns), row)
+            }
+            */
+            if ok {
+                rows[channelMap[int(channel)]] = noteObject
+            }
         }
 
         patterns = append(patterns, pattern)
