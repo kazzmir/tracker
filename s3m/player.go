@@ -24,6 +24,30 @@ var Octaves []int = []int{
     107,  101,   95,   90,   85,   80,   75,   71,   67,   63,   60,   56, 0, 0, 0, 0,
 }
 
+type Vibrato struct {
+    Speed int
+    Depth int
+    position int
+}
+
+func (vibrato *Vibrato) Update() {
+    vibrato.position += vibrato.Speed
+    if vibrato.position >= 64 {
+        vibrato.position -= 64
+    }
+}
+
+func (vibrato *Vibrato) Apply(frequency int) int {
+    if vibrato.Depth <= 0 || vibrato.Speed <= 0 {
+        return frequency
+    }
+
+    // Amiga vibrato is a sine wave with a period of 64
+    // and a depth of 8, so we scale the position to that range
+    vibratoValue := int(float64(vibrato.Depth * 6) * math.Sin(float64(vibrato.position) * math.Pi * 360 / 64 / 180))
+    return frequency + vibratoValue
+}
+
 type Channel struct {
     Player *Player
     AudioBuffer *common.AudioBuffer
@@ -37,6 +61,7 @@ type Channel struct {
     CurrentVolume int
     CurrentEffect int
     EffectParameter int
+    Vibrato Vibrato
 
     VolumeSlide uint8
     PortamentoToNote uint8
@@ -111,6 +136,13 @@ func (channel *Channel) UpdateRow() {
                 newPeriod += int(channel.PortamentoNote & 0xf)
             }
 
+        case EffectVibrato:
+            if note.EffectParameter > 0 {
+                channel.Vibrato.Speed = int(note.EffectParameter >> 4)
+                channel.Vibrato.Depth = int(note.EffectParameter & 0xf)
+            }
+            channel.CurrentEffect = EffectVibrato
+
         case EffectGlobalVolume:
             channel.Player.GlobalVolume = uint8(channel.EffectParameter & 0x3f)
             log.Printf("Set global volume to %v", channel.Player.GlobalVolume)
@@ -176,6 +208,8 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
     switch channel.CurrentEffect {
         case EffectVolumeSlide:
             channel.doVolumeSlide(changeRow)
+        case EffectVibrato:
+            channel.Vibrato.Update()
         case EffectPortamentoToNote:
             if !changeRow {
                 channel.doPortamentoToNote(ticks)
@@ -195,64 +229,58 @@ func (channel *Channel) Update(rate float32) {
     channel.AudioBuffer.Lock()
 
     // if channel.CurrentNote != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
-    if channel.CurrentSample > 0 {
+    if channel.CurrentSample > 0 && channel.CurrentPeriod > 0 {
         instrument := channel.Player.GetInstrument(channel.CurrentSample)
-        period := 8363 * channel.CurrentPeriod / int(instrument.MiddleC)
-        frequency := 14317056 / float32(period)
-        // frequency := amigaFrequency / float32(period * 2)
+        if instrument.MiddleC > 0 {
 
-        // ???
-        // frequency /= 2
+            period := 8363 * channel.CurrentPeriod / int(instrument.MiddleC)
 
-        // log.Printf("Note %v Octave %v Frequency %v MiddleC %v", channel.CurrentNote.Note, Octaves[channel.CurrentNote.Note], frequency, instrument.MiddleC)
+            if channel.CurrentEffect == EffectVibrato {
+                period = channel.Vibrato.Apply(period)
+            }
 
-        /*
-        if channel.CurrentEffect == EffectVibrato {
-            frequency = channel.Vibrato.Apply(frequency)
-        }
-        */
+            frequency := 14317056 / float32(period)
+            // frequency := amigaFrequency / float32(period * 2)
 
-        incrementRate := frequency / float32(channel.Player.SampleRate)
+            // ???
+            // frequency /= 2
 
-        noteVolume := float32(channel.CurrentVolume) / 64
-        // log.Printf("note volume %v", noteVolume)
+            // log.Printf("Note %v Octave %v Frequency %v MiddleC %v", channel.CurrentNote.Note, Octaves[channel.CurrentNote.Note], frequency, instrument.MiddleC)
 
-        // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
 
-        if incrementRate > 0 {
-            for range samples {
-                position := int(channel.startPosition)
-                /*
-                if position >= len(channel.CurrentSample.Data) {
-                    break
-                }
-                */
-                if position >= len(instrument.Data) || (instrument.LoopBegin > 1 && position >= instrument.LoopEnd) {
-                    // log.Printf("Position %v loop begin %v loop end %v", position, instrument.LoopBegin, instrument.LoopEnd)
-                    if instrument.LoopBegin > 1 {
-                        channel.startPosition = float32(instrument.LoopBegin)
-                        position = int(channel.startPosition)
-                    } else {
+            incrementRate := frequency / float32(channel.Player.SampleRate)
+
+            noteVolume := float32(channel.CurrentVolume) / 64
+            // log.Printf("note volume %v", noteVolume)
+
+            // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
+
+            if incrementRate > 0 {
+                for range samples {
+                    position := int(channel.startPosition)
+                    /*
+                    if position >= len(channel.CurrentSample.Data) {
                         break
                     }
+                    */
+                    if position >= len(instrument.Data) || (instrument.Loop && position >= instrument.LoopEnd) {
+                        // log.Printf("Position %v loop begin %v loop end %v", position, instrument.LoopBegin, instrument.LoopEnd)
+                        if instrument.Loop && position >= instrument.LoopEnd {
+                            channel.startPosition = float32(instrument.LoopBegin)
+                            position = int(channel.startPosition)
+                        } else {
+                            break
+                        }
+                    }
+
+                    // noteVolume = 1
+
+                    channel.AudioBuffer.UnsafeWrite(instrument.Data[position] * channel.Volume * noteVolume * float32(channel.Player.GlobalVolume) / 64)
+                    channel.startPosition += incrementRate
+                    samplesWritten += 1
                 }
-
-                // noteVolume = 1
-
-                channel.AudioBuffer.UnsafeWrite(instrument.Data[position] * channel.Volume * noteVolume * float32(channel.Player.GlobalVolume) / 64)
-                channel.startPosition += incrementRate
-                samplesWritten += 1
             }
         }
-
-        /*
-        part := channel.CurrentSample.Data[channel.startPosition:channel.endPosition]
-        if len(part) > 0 {
-            // channel.AudioBuffer.Write(part, noteRate)
-            // middle-C
-            channel.AudioBuffer.Write(part, 261.63 / float32(note.PeriodFrequency))
-        }
-        */
     }
 
     for range (samples - samplesWritten) {
@@ -343,7 +371,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         GlobalVolume: file.GlobalVolume,
     }
 
-    // player.BPM = 15
+    // player.BPM = 40
 
     for channelNum, index := range file.ChannelMap {
         channels[index] = &Channel{
@@ -365,7 +393,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
     player.Channels = channels[:]
 
     /*
-    player.S3M.Orders = []byte{20}
+    player.S3M.Orders = []byte{21}
     player.S3M.SongLength = 1
     */
 
@@ -407,7 +435,7 @@ func (player *Player) Update(timeDelta float32) {
 
     if player.ticks >= float32(player.Speed) {
         player.CurrentRow += 1
-        log.Printf("Row: %v", player.CurrentRow)
+        // log.Printf("Row: %v", player.CurrentRow)
         player.ticks -= float32(player.Speed)
     }
 

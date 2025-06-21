@@ -38,6 +38,7 @@ type Instrument struct {
     SampleFormat uint16
     Flags uint8
     Volume uint8
+    Loop bool
     LoopBegin int
     LoopEnd int
     Data []float32
@@ -445,6 +446,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
                 MiddleC: middleC,
                 Volume: sampleVolume,
                 Flags: flags,
+                Loop: flags & 1 != 0,
                 LoopBegin: int(loopBegin),
                 LoopEnd: int(loopEnd),
                 Data: floatData,
