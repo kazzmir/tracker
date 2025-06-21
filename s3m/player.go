@@ -63,6 +63,9 @@ type Channel struct {
     EffectParameter int
     Vibrato Vibrato
 
+    // replay the note every n ticks
+    Retrigger int
+
     VolumeSlide uint8
     PortamentoToNote uint8
     PortamentoNote int
@@ -124,6 +127,10 @@ func (channel *Channel) UpdateRow() {
             channel.Player.CurrentRow = channel.EffectParameter
         case EffectSampleOffset:
             channel.startPosition = float32(channel.EffectParameter) * 0x100
+        case EffectRetriggerAndVolumeSlide:
+            channel.CurrentEffect = EffectRetriggerAndVolumeSlide
+            channel.VolumeSlide = note.EffectParameter >> 4
+            channel.Retrigger = int(note.EffectParameter & 0xf)
         case EffectPortamentoDown:
             channel.CurrentEffect = EffectPortamentoDown
 
@@ -227,6 +234,40 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
         case EffectPortamentoDown:
             if !changeRow {
                 channel.CurrentPeriod += int(channel.PortamentoNote) * ticks * 4
+            }
+        case EffectRetriggerAndVolumeSlide:
+            if !changeRow && channel.Retrigger > 0 && ticks % channel.Retrigger == 0 {
+                // log.Printf("Retriggering channel %v", channel.Channel)
+                instrument := channel.Player.GetInstrument(channel.CurrentSample)
+                if instrument != nil && len(instrument.Data) > 0 {
+                    channel.startPosition = 0.0
+                }
+
+                switch channel.VolumeSlide {
+                    case 0:
+                    case 1: channel.CurrentVolume -= 1
+                    case 2: channel.CurrentVolume -= 2
+                    case 3: channel.CurrentVolume -= 4
+                    case 4: channel.CurrentVolume -= 8
+                    case 5: channel.CurrentVolume -= 16
+                    case 6: channel.CurrentVolume = channel.CurrentVolume * 2 / 3
+                    case 7: channel.CurrentVolume = channel.CurrentVolume / 2
+                    case 8:
+                    case 9: channel.CurrentVolume += 1
+                    case 10: channel.CurrentVolume += 2
+                    case 11: channel.CurrentVolume += 4
+                    case 12: channel.CurrentVolume += 8
+                    case 13: channel.CurrentVolume += 16
+                    case 14: channel.CurrentVolume = channel.CurrentVolume * 3 / 2
+                    case 15: channel.CurrentVolume = channel.CurrentVolume * 2
+                }
+
+                if channel.CurrentVolume < 0 {
+                    channel.CurrentVolume = 0
+                }
+                if channel.CurrentVolume > 64 {
+                    channel.CurrentVolume = 64
+                }
             }
     }
 }
