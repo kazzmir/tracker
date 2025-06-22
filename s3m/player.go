@@ -601,10 +601,11 @@ func (player *Player) GetName() string {
 }
 
 func (player *Player) ResetRow() {
+    player.CurrentRow = 0
 }
 
 func (player *Player) GetCurrentOrder() int {
-    return 0
+    return player.CurrentOrder
 }
 
 func (player *Player) RenderToPCM() io.Reader {

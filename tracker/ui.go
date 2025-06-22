@@ -70,6 +70,7 @@ func makeNineRoundedButtonImage(width int, height int, border int, col color.Col
 type UIPlayer interface {
     GetName() string
     GetCurrentOrder() int
+    GetPattern() int
     GetSongLength() int
     GetSpeed() int
     GetBPM() int
@@ -117,7 +118,7 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
     )
 
     patternText := widget.NewText(
-        widget.TextOpts.Text(fmt.Sprintf("Pattern: %02X", 0), face, color.White),
+        widget.TextOpts.Text(fmt.Sprintf("Pattern: %02X", player.GetPattern()), face, color.White),
     )
 
     speedText := widget.NewText(
