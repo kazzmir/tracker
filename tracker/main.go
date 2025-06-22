@@ -6,6 +6,7 @@ import (
     "time"
     "io"
     "sync"
+    "bytes"
     // for discard
     // "io/ioutil"
     "flag"
@@ -14,7 +15,7 @@ import (
 
     "github.com/kazzmir/tracker/mod"
     "github.com/kazzmir/tracker/s3m"
-    // "github.com/kazzmir/tracker/data"
+    "github.com/kazzmir/tracker/data"
 
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -38,6 +39,18 @@ type TrackerPlayer interface {
     RenderToPCM() io.Reader
 }
 
+type System struct {
+    engine *Engine
+}
+
+func (system *System) LoadSong(path string) {
+    system.engine.LoadSongFromData(path)
+}
+
+func (system *System) GetFiles() []string {
+    return data.ListFiles()
+}
+
 type Engine struct {
     Player TrackerPlayer
 
@@ -56,7 +69,7 @@ func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, err
         AudioContext: audioContext,
     }
 
-    engine.UI, engine.UIHooks = makeUI(player)
+    engine.UI, engine.UIHooks = makeUI(player, &System{engine: engine})
 
     player.SetOnChangeRow(engine.UIHooks.UpdateRow)
     player.SetOnChangeOrder(engine.UIHooks.UpdateOrder)
@@ -76,39 +89,78 @@ func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, err
     return engine, nil
 }
 
-func MakeS3MEngine(s3mPlayer *s3m.Player, audioContext *audio.Context) (*Engine, error) {
-    engine := &Engine{
-        Player: s3mPlayer,
-        AudioContext: audioContext,
-    }
-
-    engine.UI, engine.UIHooks = makeUI(s3mPlayer)
-
-    s3mPlayer.OnChangeRow = func(row int) {
-        engine.UIHooks.UpdateRow(row)
-    }
-
-    s3mPlayer.OnChangeOrder = func(order int, pattern int) {
-        engine.UIHooks.UpdateOrder(order,pattern)
-    }
-
-    s3mPlayer.OnChangeSpeed = func(speed int, bpm int) {
-        engine.UIHooks.UpdateSpeed(speed, bpm)
-    }
-
-    for _, channel := range s3mPlayer.Channels {
-        playChannel, err := audioContext.NewPlayerF32(channel)
+func (engine *Engine) LoadSongFromData(path string) {
+    loadS3m := func() (TrackerPlayer, error) {
+        file, err := data.OpenFile(path)
         if err != nil {
             return nil, err
         }
+        defer file.Close()
+
+        var buffer bytes.Buffer
+        io.Copy(&buffer, file)
+
+        loaded, err := s3m.Load(bytes.NewReader(buffer.Bytes()))
+        if err != nil {
+            return nil, err
+        }
+
+        return s3m.MakePlayer(loaded, engine.AudioContext.SampleRate()), nil
+    }
+
+    loadMod := func() (TrackerPlayer, error) {
+        file, err := data.OpenFile(path)
+
+        if err != nil {
+            return nil, err
+        }
+        defer file.Close()
+
+        loaded, err := mod.Load(file)
+        if err != nil {
+            return nil, err
+        }
+
+        return mod.MakePlayer(loaded, engine.AudioContext.SampleRate()), nil
+    }
+
+    player, err := loadS3m()
+    if err != nil {
+        player, err = loadMod()
+    }
+
+    if err != nil {
+        log.Printf("Not an s3m or mod file %v: %v", path, err)
+        return
+    }
+
+    engine.UI, engine.UIHooks = makeUI(player, &System{engine: engine})
+
+    player.SetOnChangeRow(engine.UIHooks.UpdateRow)
+    player.SetOnChangeOrder(engine.UIHooks.UpdateOrder)
+    player.SetOnChangeSpeed(engine.UIHooks.UpdateSpeed)
+
+    for _, channel := range engine.Players {
+        channel.Pause()
+        channel.Close()
+    }
+
+    engine.Players = nil
+
+    for _, channel := range player.GetChannelReaders() {
+        playChannel, err := engine.AudioContext.NewPlayerF32(channel)
+        if err != nil {
+            log.Printf("Could not create audio player for channel: %v", err)
+            continue
+        }
         playChannel.SetBufferSize(time.Second / 20)
-        playChannel.SetVolume(0.5)
+        playChannel.SetVolume(0.3)
         engine.Players = append(engine.Players, playChannel)
         // playChannel.Play()
     }
 
-    return engine, nil
-
+    engine.Start = sync.Once{}
+    engine.Player = player
 }
 
 func (engine *Engine) Update() error {
@@ -127,6 +179,10 @@ func (engine *Engine) Update() error {
             case ebiten.KeyRight:
                 engine.Player.NextOrder()
                 log.Printf("New order: %d", engine.Player.GetCurrentOrder())
+            case ebiten.KeyL:
+                if engine.UIHooks.LoadSong != nil {
+                    engine.UIHooks.LoadSong()
+                }
         }
     }
 

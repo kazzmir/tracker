@@ -291,7 +291,6 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
 }
 
 func (channel *Channel) Update(rate float32) {
-
     samples := int(float32(channel.Player.SampleRate) * rate)
     samplesWritten := 0
 
