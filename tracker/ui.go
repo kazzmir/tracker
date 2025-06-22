@@ -352,3 +352,18 @@ func makeUI(player *mod.Player) (*ebitenui.UI, UIHooks) {
 
     return &ui, uiHooks
 }
+
+func makeDummyUI() *ebitenui.UI {
+    rootContainer := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+            widget.RowLayoutOpts.Spacing(2),
+            // widget.RowLayoutOpts.Padding(widget.Insets{Top: 0, Bottom: 0}),
+        )),
+        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
+    )
+
+    return &ebitenui.UI{
+        Container: rootContainer,
+    }
+}

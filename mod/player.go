@@ -2,119 +2,13 @@ package mod
 
 import (
     "log"
-    "sync"
     "math"
     "io"
     "fmt"
     "runtime"
+    
+    "github.com/kazzmir/tracker/common"
 )
-
-type AudioBuffer struct {
-    // mono channel buffer of samples
-    Buffer []float32
-    lock sync.Mutex
-
-    start int
-    end int
-    count int
-}
-
-func (buffer *AudioBuffer) Lock() {
-    buffer.lock.Lock()
-}
-
-func (buffer *AudioBuffer) Unlock() {
-    buffer.lock.Unlock()
-}
-
-func (buffer *AudioBuffer) Clear() {
-    buffer.lock.Lock()
-    defer buffer.lock.Unlock()
-
-    buffer.start = 0
-    buffer.end = 0
-    buffer.count = 0
-}
-
-func (buffer *AudioBuffer) Read(data []float32) int {
-    buffer.lock.Lock()
-    defer buffer.lock.Unlock()
-
-    total := 0
-
-    if buffer.count == 0 {
-        return total
-    }
-
-    // using copy() is much faster than a for loop, so we copy ranges of bytes out of the
-    // ring buffer
-    index := 0
-    for buffer.count > 0 && index < len(data) {
-        limit := buffer.count
-        if buffer.start + buffer.count > len(buffer.Buffer) {
-            limit = len(buffer.Buffer) - buffer.start
-        }
-        limit = min(limit, len(data[index:]))
-        copy(data[index:], buffer.Buffer[buffer.start:buffer.start + limit])
-        buffer.start = (buffer.start + limit) % len(buffer.Buffer)
-        index += limit
-        buffer.count -= limit
-        total += limit
-    }
-
-    /*
-    for i := range len(data) {
-        if buffer.count == 0 {
-            break
-        }
-        data[i] = buffer.Buffer[buffer.start]
-        buffer.start = (buffer.start + 1) % len(buffer.Buffer)
-        buffer.count -= 1
-        total += 1
-    }
-    */
-
-    return total
-}
-
-func (buffer *AudioBuffer) UnsafeWrite(value float32) {
-    if buffer.count < len(buffer.Buffer) {
-        buffer.count += 1
-        buffer.Buffer[buffer.end] = value
-        buffer.end += 1
-        if buffer.end >= len(buffer.Buffer) {
-            buffer.end = 0
-        }
-        // buffer.end = (buffer.end + 1) % len(buffer.Buffer)
-    } else {
-        // log.Printf("overflow in audio buffer, dropping sample %v", value)
-    }
-}
-
-func (buffer *AudioBuffer) Write(data []float32, rate float32) {
-    buffer.lock.Lock()
-    defer buffer.lock.Unlock()
-
-    var index float32
-    for int(index) < len(data) {
-        value := data[int(index)]
-        index += rate
-        if buffer.count >= len(buffer.Buffer) {
-            break
-        }
-
-        buffer.count += 1
-        buffer.Buffer[buffer.end] = value
-        buffer.end = (buffer.end + 1) % len(buffer.Buffer)
-    }
-}
-
-func MakeAudioBuffer(sampleRate int) *AudioBuffer {
-    return &AudioBuffer{
-        // one full second worth of buffering
-        Buffer: make([]float32, sampleRate),
-    }
-}
 
 type Vibrato struct {
     Speed int
@@ -142,7 +36,7 @@ func (vibrato *Vibrato) Apply(frequency int) int {
 
 type Channel struct {
     Player *Player
-    AudioBuffer *AudioBuffer
+    AudioBuffer *common.AudioBuffer
     ChannelNumber int
 
     Vibrato Vibrato
@@ -657,7 +551,7 @@ func MakeChannelVoice(channelNumber int, player *Player) *Channel {
     channel := &Channel{
         Player: player,
         ChannelNumber: channelNumber,
-        AudioBuffer: MakeAudioBuffer(player.SampleRate),
+        AudioBuffer: common.MakeAudioBuffer(player.SampleRate),
         Volume: 1.0,
         buffer: make([]float32, player.SampleRate),
         // currentRow: -1,
@@ -780,6 +674,14 @@ func (player *Player) PreviousOrder() {
     }
 }
 
+func (player *Player) ResetRow() {
+    player.CurrentRow = 0
+}
+
+func (player *Player) GetCurrentOrder() int {
+    return player.CurrentOrder
+}
+
 func (player *Player) Update(timeDelta float32) {
     oldRow := player.CurrentRow
     oldTicks := int(player.ticks)
@@ -837,36 +739,6 @@ func (player *Player) Update(timeDelta float32) {
     if player.OnChangeSpeed != nil {
         player.OnChangeSpeed(player.Speed, player.BPM)
     }
-}
-
-type ReaderFunc struct {
-    Func func(data []byte) (int, error)
-}
-
-func (reader *ReaderFunc) Read(data []byte) (int, error) {
-    if reader.Func == nil {
-        return 0, io.EOF
-    }
-    return reader.Func(data)
-}
-
-// returns the number of floats copied
-func copyFloat32(dst []byte, src []float32) int {
-    maxBytes := min(len(dst), len(src) * 4)
-
-    for i := range src {
-        if i * 4 >= maxBytes {
-            return i
-        }
-
-        bits := math.Float32bits(src[i])
-        dst[i*4+0] = byte(bits)
-        dst[i*4+1] = byte(bits >> 8)
-        dst[i*4+2] = byte(bits >> 16)
-        dst[i*4+3] = byte(bits >> 24)
-    }
-
-    return len(src)
 }
 
 // using this function turns out to be quite slow, its faster to use min/max
@@ -939,7 +811,7 @@ func (player *Player) RenderToPCM() io.Reader {
 
             // log.Printf("Partial Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
 
-            amount := copyFloat32(data, part)
+            amount := common.CopyFloat32(data, part)
 
             /*
             amount := min(len(data), len(part))
@@ -958,13 +830,13 @@ func (player *Player) RenderToPCM() io.Reader {
 
         // copy the mix into the data buffer
         // log.Printf("Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
-        amount := copyFloat32(data, mix)
+        amount := common.CopyFloat32(data, mix)
         mixPosition += amount
 
         return amount * 4, nil
     }
 
-    return &ReaderFunc{
+    return &common.ReaderFunc{
         Func: reader,
     }
 }
