@@ -4,6 +4,7 @@ import (
     "image/color"
     "bytes"
     _ "embed"
+    "log"
     "fmt"
 
     "github.com/kazzmir/tracker/common"
@@ -24,6 +25,7 @@ type UIHooks struct {
     UpdateRow func(int)
     UpdateOrder func(int, int)
     UpdateSpeed func(int, int)
+    LoadSong func()
 }
 func loadFont(size float64) (text.Face, error) {
     source, err := text.NewGoTextFaceSource(bytes.NewReader(FuturaTTF))
@@ -368,6 +370,9 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
         },
         UpdateSpeed: func(speed int, bpm int) {
             speedText.Label = fmt.Sprintf("Speed: %d BPM: %d", speed, bpm)
+        },
+        LoadSong: func() {
+            log.Printf("Load new song")
         },
     }
 

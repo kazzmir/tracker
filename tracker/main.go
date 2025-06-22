@@ -127,6 +127,10 @@ func (engine *Engine) Update() error {
             case ebiten.KeyRight:
                 engine.Player.NextOrder()
                 log.Printf("New order: %d", engine.Player.GetCurrentOrder())
+            case ebiten.KeyL:
+                if engine.UIHooks.LoadSong != nil {
+                    engine.UIHooks.LoadSong()
+                }
         }
     }
 
