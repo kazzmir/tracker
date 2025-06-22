@@ -2,6 +2,7 @@ package main
 
 import (
     "image/color"
+    "image"
     "bytes"
     _ "embed"
     "log"
@@ -391,7 +392,10 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
         LoadSong: func() {
             log.Printf("Load new song")
 
-            ui.AddWindow(makeLoadWindow())
+            window := makeLoadWindow()
+            window.SetLocation(image.Rect(10, 10, 210, 210))
+
+            ui.AddWindow(window)
         },
     }
 
