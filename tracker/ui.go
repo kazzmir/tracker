@@ -339,24 +339,39 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
         Container: rootContainer,
     }
 
+    windowActive := false
     makeLoadWindow := func() *widget.Window {
         window := widget.NewContainer(
             widget.ContainerOpts.Layout(widget.NewRowLayout(
                 widget.RowLayoutOpts.Direction(widget.DirectionVertical),
                 widget.RowLayoutOpts.Spacing(2),
             )),
-            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255})),
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 0x0e, G: 0x4f, B: 0x65, A: 240})),
         )
+
+        titleContainer := widget.NewContainer(
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255})),
+            widget.ContainerOpts.Layout(widget.NewAnchorLayout()),
+        )
+
+        titleContainer.AddChild(widget.NewText(
+            widget.TextOpts.Text("Load Song", face, color.White),
+            widget.TextOpts.WidgetOpts(widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
+                HorizontalPosition: widget.AnchorLayoutPositionCenter,
+                VerticalPosition: widget.AnchorLayoutPositionCenter,
+            })),
+        ))
 
         return widget.NewWindow(
             widget.WindowOpts.Contents(window),
-            // widget.WindowOpts.Title("Load Song"),
+            widget.WindowOpts.TitleBar(titleContainer, 25),
             widget.WindowOpts.MinSize(200, 200),
-            widget.WindowOpts.MaxSize(300, 300),
+            widget.WindowOpts.MaxSize(400, 700),
         )
     }
 
     currentRowHighlight := 0
+
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
             if row < len(rowContainers) {
@@ -390,12 +405,15 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
             speedText.Label = fmt.Sprintf("Speed: %d BPM: %d", speed, bpm)
         },
         LoadSong: func() {
-            log.Printf("Load new song")
+            if !windowActive {
+                log.Printf("Load new song")
 
-            window := makeLoadWindow()
-            window.SetLocation(image.Rect(10, 10, 210, 210))
+                window := makeLoadWindow()
+                window.SetLocation(image.Rect(80, 20, 1000, 1000))
 
-            ui.AddWindow(window)
+                ui.AddWindow(window)
+                windowActive = true
+            }
         },
     }
 
