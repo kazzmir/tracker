@@ -614,6 +614,26 @@ func (player *Player) GetPattern() int {
     return int(player.ModFile.Orders[player.CurrentOrder])
 }
 
+func (player *Player) GetSpeed() int {
+    return player.Speed
+}
+
+func (player *Player) GetBPM() int {
+    return player.BPM
+}
+
+func (player *Player) GetChannelCount() int {
+    return len(player.Channels)
+}
+
+func (player *Player) GetName() string {
+    return player.ModFile.Name
+}
+
+func (player *Player) GetRowNoteInfo(channel int, rowNumber int) common.NoteInfo {
+    return player.GetRowNote(channel, rowNumber)
+}
+
 func (player *Player) GetRowNote(channel int, rowNumber int) *Note {
     pattern := player.GetPattern()
     row := &player.ModFile.Patterns[pattern].Rows[rowNumber]

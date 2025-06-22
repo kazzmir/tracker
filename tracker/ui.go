@@ -6,8 +6,6 @@ import (
     _ "embed"
     "fmt"
 
-    "github.com/kazzmir/tracker/mod"
-
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/text/v2"
     "github.com/hajimehoshi/ebiten/v2/vector"
@@ -67,7 +65,17 @@ func makeNineRoundedButtonImage(width int, height int, border int, col color.Col
     }
 }
 
-func makeUI(player *mod.Player) (*ebitenui.UI, UIHooks) {
+type UIPlayer interface {
+    GetName() string
+    GetCurrentOrder() int
+    GetSongLength() int
+    GetSpeed() int
+    GetBPM() int
+    GetChannelCount() int
+    GetRowNoteInfo(channel int, row int) common.UINote
+}
+
+func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
     face, _ := loadFont(19)
 
     rootContainer := widget.NewContainer(
@@ -99,11 +107,11 @@ func makeUI(player *mod.Player) (*ebitenui.UI, UIHooks) {
     )
 
     infoContainer.AddChild(widget.NewText(
-        widget.TextOpts.Text(fmt.Sprintf("Mod name: %s", player.ModFile.Name), face, color.White),
+        widget.TextOpts.Text(fmt.Sprintf("Mod name: %s", player.GetName()), face, color.White),
     ))
 
     orderText := widget.NewText(
-        widget.TextOpts.Text(fmt.Sprintf("Order: %v/%v", player.CurrentOrder, player.ModFile.SongLength), face, color.White),
+        widget.TextOpts.Text(fmt.Sprintf("Order: %v/%v", player.GetCurrentOrder(), player.GetSongLength()), face, color.White),
     )
 
     patternText := widget.NewText(
@@ -111,7 +119,7 @@ func makeUI(player *mod.Player) (*ebitenui.UI, UIHooks) {
     )
 
     speedText := widget.NewText(
-        widget.TextOpts.Text(fmt.Sprintf("Speed: %d BPM: %d", player.Speed, player.BPM), face, color.White),
+        widget.TextOpts.Text(fmt.Sprintf("Speed: %d BPM: %d", player.GetSpeed(), player.GetBPM()), face, color.White),
     )
 
     infoContainer.AddChild(orderText)
@@ -205,7 +213,7 @@ func makeUI(player *mod.Player) (*ebitenui.UI, UIHooks) {
     var removeChannels []widget.RemoveChildFunc
 
     var channelColumn []*widget.Container
-    for i := range player.Channels {
+    for i := range player.GetChannelCount() {
         column := widget.NewContainer(
             widget.ContainerOpts.Layout(widget.NewRowLayout(
                 widget.RowLayoutOpts.Direction(widget.DirectionVertical),
@@ -251,27 +259,37 @@ func makeUI(player *mod.Player) (*ebitenui.UI, UIHooks) {
             rowContainers[row] = rowContainers[row][1:]
         }
 
-        for i := range player.Channels {
+        for i := range player.GetChannelCount() {
             container := channelColumn[i]
 
             for row := range 64 {
-                note := player.GetRowNote(i, row)
+                note := player.GetRowNoteInfo(i, row)
 
-                noteName := "..."
+                noteName := note.GetName()
+                if noteName == "" {
+                    noteName = "..."
+                }
+                /*
                 if note.PeriodFrequency > 0 {
                     noteName = fmt.Sprintf("%v", mod.ConvertToNote(note.PeriodFrequency))
                     // noteList.AddEntry(name)
                 }
+                */
 
-                sampleName := ".."
+                sampleName := note.GetSampleName()
+                /*
                 if note.SampleNumber > 0 {
                     sampleName = fmt.Sprintf("%02X", note.SampleNumber)
                 }
+                */
 
-                effectName := "..."
+                // effectName := "..."
+                effectName := note.GetEffectName()
+                /*
                 if note.EffectNumber > 0 || note.EffectParameter > 0 {
                     effectName = fmt.Sprintf("%X%02X", note.EffectNumber, note.EffectParameter)
                 }
+                */
 
                 textContainer := widget.NewContainer(
                     widget.ContainerOpts.Layout(widget.NewRowLayout(
@@ -340,7 +358,7 @@ func makeUI(player *mod.Player) (*ebitenui.UI, UIHooks) {
         UpdateOrder: func(order int, pattern int) {
             setupChannels()
 
-            orderText.Label = fmt.Sprintf("Order: %v/%v", order, player.ModFile.SongLength)
+            orderText.Label = fmt.Sprintf("Order: %v/%v", order, player.GetSongLength())
             patternText.Label = fmt.Sprintf("Pattern: %02X", pattern)
         },
         UpdateSpeed: func(speed int, bpm int) {

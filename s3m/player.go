@@ -77,7 +77,7 @@ type Channel struct {
 func (channel *Channel) UpdateRow() {
     channel.currentRow = channel.Player.CurrentRow
 
-    note := channel.Player.GetNote(channel.Channel, channel.currentRow)
+    note := channel.Player.GetRowNote(channel.Channel, channel.currentRow)
 
     // log.Printf("Channel %v row %v Play note %+v", channel.Channel, channel.currentRow, note)
 
@@ -114,6 +114,9 @@ func (channel *Channel) UpdateRow() {
         case EffectNone:
         case EffectSetSpeed:
             channel.Player.Speed = channel.EffectParameter
+            if channel.Player.OnChangeSpeed != nil {
+                channel.Player.OnChangeSpeed(channel.Player.Speed, channel.Player.BPM)
+            }
         case EffectSetTempo:
             channel.Player.BPM = channel.EffectParameter
         case EffectPortamentoToNote:
@@ -424,6 +427,10 @@ type Player struct {
     CurrentOrder int
     OrdersPlayed int
     ticks float32
+
+    OnChangeRow func(row int)
+    OnChangeOrder func(order int, pattern int)
+    OnChangeSpeed func(speed int, bpm int)
 }
 
 func MakePlayer(file *S3MFile, sampleRate int) *Player {
@@ -472,7 +479,7 @@ func (player *Player) GetPattern() int {
     return int(player.S3M.Orders[player.CurrentOrder])
 }
 
-func (player *Player) GetNote(channel int, row int) *Note {
+func (player *Player) GetRowNote(channel int, row int) *Note {
     if player.GetPattern() >= len(player.S3M.Patterns) {
         return &Note{}
     }
@@ -503,6 +510,10 @@ func (player *Player) Update(timeDelta float32) {
         player.CurrentRow += 1
         // log.Printf("Row: %v", player.CurrentRow)
         player.ticks -= float32(player.Speed)
+
+        if player.OnChangeRow != nil {
+            player.OnChangeRow(player.CurrentRow)
+        }
     }
 
     if player.CurrentRow > len(player.S3M.Patterns[0].Rows) - 1 {
@@ -514,11 +525,9 @@ func (player *Player) Update(timeDelta float32) {
             player.CurrentOrder = 0
         }
 
-        /*
         if player.OnChangeOrder != nil {
             player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
         }
-        */
 
         log.Printf("order %v next pattern: %v", player.CurrentOrder, player.GetPattern())
     }
