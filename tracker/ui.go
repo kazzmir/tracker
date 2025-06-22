@@ -383,8 +383,8 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             widget.ListOpts.Entries(entries),
             widget.ListOpts.ScrollContainerOpts(
                 widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
-                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
-                    Mask: ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 255, B: 255, A: 255}),
+                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 200}),
+                    Mask: ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 255, B: 255, A: 200}),
                     Disabled: ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255}),
                 }),
             ),
@@ -395,16 +395,20 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
                     Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
                     Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255}),
                 }, &widget.ButtonImage{
-                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
-                    Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
-                    Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
+                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x70, G: 0x28, B: 0x0f, A: 255}),
+                    Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x92, G: 0x34, B: 0x14, A: 255}),
+                    Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0xc8, G: 0x47, B: 0x1b, A: 255}),
                 }),
                 widget.SliderOpts.MinHandleSize(20),
                 widget.SliderOpts.TrackPadding(widget.NewInsetsSimple(2)),
             ),
             widget.ListOpts.EntryColor(&widget.ListEntryColor{
-                Selected: color.NRGBA{R: 255, G: 255, B: 0, A: 200},
+                Selected: color.NRGBA{R: 255, G: 255, B: 0, A: 255},
                 Unselected: color.White,
+                FocusedBackground: color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255},
+                // SelectedBackground: color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255},
+                SelectedFocusedBackground: color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255},
+                SelectingFocusedBackground: color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255},
             }),
             widget.ListOpts.EntryLabelFunc(func (e interface{}) string {
                 return e.(string)
@@ -415,23 +419,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
                 entry := args.Entry.(string)
                 log.Printf("Selected entry: %s", entry)
             }),
-
-            /*
-            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 0x0e, G: 0x4f, B: 0x65, A: 240})),
-            widget.ContainerOpts.Layout(widget.NewRowLayout(
-                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                widget.RowLayoutOpts.Spacing(2),
-            )),
-            */
         )
-
-        /*
-        for _, name := range system.GetFiles() {
-            fileList.AddChild(widget.NewText(
-                widget.TextOpts.Text(name, face, color.White),
-            ))
-        }
-        */
 
         windowContainer.AddChild(fileList)
 
