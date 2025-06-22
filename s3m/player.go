@@ -570,6 +570,26 @@ func (player *Player) Update(timeDelta float32) {
     */
 }
 
+func (player *Player) SetOnChangeRow(callback func(row int)) {
+    player.OnChangeRow = callback
+}
+
+func (player *Player) SetOnChangeOrder(callback func(order int, pattern int)) {
+    player.OnChangeOrder = callback
+}
+
+func (player *Player) SetOnChangeSpeed(callback func(speed int, bpm int)) {
+    player.OnChangeSpeed = callback
+}
+
+func (player *Player) GetChannelReaders() []io.Reader {
+    readers := make([]io.Reader, len(player.Channels))
+    for i, channel := range player.Channels {
+        readers[i] = channel
+    }
+    return readers
+}
+
 func (player *Player) NextOrder() {
     player.CurrentOrder += 1
     if player.CurrentOrder >= player.S3M.SongLength {
