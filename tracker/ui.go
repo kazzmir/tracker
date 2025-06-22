@@ -118,7 +118,7 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
     )
 
     patternText := widget.NewText(
-        widget.TextOpts.Text(fmt.Sprintf("Pattern: %02X", player.GetPattern()), face, color.White),
+        widget.TextOpts.Text(fmt.Sprintf("Pattern: %d", player.GetPattern()), face, color.White),
     )
 
     speedText := widget.NewText(
@@ -364,7 +364,7 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
             setupChannels()
 
             orderText.Label = fmt.Sprintf("Order: %v/%v", order, player.GetSongLength())
-            patternText.Label = fmt.Sprintf("Pattern: %02X", pattern)
+            patternText.Label = fmt.Sprintf("Pattern: %d", pattern)
         },
         UpdateSpeed: func(speed int, bpm int) {
             speedText.Label = fmt.Sprintf("Speed: %d BPM: %d", speed, bpm)
