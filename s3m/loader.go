@@ -76,7 +76,7 @@ func (note *Note) GetName() string {
 
 func (note *Note) GetEffectName() string {
     if note.EffectNumber > 0 || note.EffectParameter > 0 {
-        return fmt.Sprintf("%X%02X", note.EffectNumber, note.EffectParameter)
+        return fmt.Sprintf("%c%02X", 'A' + note.EffectNumber - 1, note.EffectParameter)
     }
 
     return "..."
