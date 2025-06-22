@@ -61,11 +61,31 @@ type Note struct {
     Channel int // 0-31
 }
 
+func (note *Note) GetName() string {
+    return "..."
+}
+
+func (note *Note) GetEffectName() string {
+    if note.EffectNumber > 0 || note.EffectParameter > 0 {
+        return fmt.Sprintf("%X%02X", note.EffectNumber, note.EffectParameter)
+    }
+
+    return "..."
+}
+
+func (note *Note) GetSampleName() string {
+    if note.SampleNumber > 0 {
+        return fmt.Sprintf("%02d", note.SampleNumber)
+    }
+    return ".."
+}
+
 type Pattern struct {
     Rows [][]Note
 }
 
 type S3MFile struct {
+    Name string
     Instruments []Instrument
     Patterns []Pattern
     Orders []byte
@@ -596,6 +616,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
     }
 
     return &S3MFile{
+        Name: string(name),
         Instruments: instruments,
         Patterns: patterns,
         Orders: orders,

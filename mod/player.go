@@ -626,6 +626,10 @@ func (player *Player) GetChannelCount() int {
     return len(player.Channels)
 }
 
+func (player *Player) GetSongLength() int {
+    return player.ModFile.SongLength
+}
+
 func (player *Player) GetName() string {
     return player.ModFile.Name
 }

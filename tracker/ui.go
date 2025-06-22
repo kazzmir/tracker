@@ -6,6 +6,8 @@ import (
     _ "embed"
     "fmt"
 
+    "github.com/kazzmir/tracker/common"
+
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/text/v2"
     "github.com/hajimehoshi/ebiten/v2/vector"
@@ -72,7 +74,7 @@ type UIPlayer interface {
     GetSpeed() int
     GetBPM() int
     GetChannelCount() int
-    GetRowNoteInfo(channel int, row int) common.UINote
+    GetRowNoteInfo(channel int, row int) common.NoteInfo
 }
 
 func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {

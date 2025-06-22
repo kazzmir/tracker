@@ -479,6 +479,14 @@ func (player *Player) GetPattern() int {
     return int(player.S3M.Orders[player.CurrentOrder])
 }
 
+func (player *Player) GetSongLength() int {
+    return player.S3M.SongLength
+}
+
+func (player *Player) GetRowNoteInfo(channel int, row int) common.NoteInfo {
+    return player.GetRowNote(channel, row)
+}
+
 func (player *Player) GetRowNote(channel int, row int) *Note {
     if player.GetPattern() >= len(player.S3M.Patterns) {
         return &Note{}
@@ -574,6 +582,22 @@ func (player *Player) PreviousOrder() {
     if player.CurrentOrder < 0 {
         player.CurrentOrder = player.S3M.SongLength - 1
     }
+}
+
+func (player *Player) GetSpeed() int {
+    return player.Speed
+}
+
+func (player *Player) GetBPM() int {
+    return player.BPM
+}
+
+func (player *Player) GetChannelCount() int {
+    return len(player.Channels)
+}
+
+func (player *Player) GetName() string {
+    return player.S3M.Name
 }
 
 func (player *Player) ResetRow() {
