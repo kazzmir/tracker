@@ -7,6 +7,7 @@ import (
     "io"
     "sync"
     "bytes"
+    "io/fs"
     // for discard
     // "io/ioutil"
     "flag"
@@ -44,7 +45,7 @@ type System struct {
 }
 
 func (system *System) LoadSong(path string) {
-    system.engine.LoadSongFromData(path)
+    system.engine.LoadSongFromFilesystem(data.Data, "data/" + path)
 }
 
 func (system *System) GetFiles() []string {
@@ -90,9 +91,9 @@ func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, err
     return engine, nil
 }
 
-func (engine *Engine) LoadSongFromData(path string) {
+func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
     loadS3m := func() (TrackerPlayer, error) {
-        file, err := data.OpenFile(path)
+        file, err := filesystem.Open(path)
         if err != nil {
             return nil, err
         }
@@ -110,7 +111,7 @@ func (engine *Engine) LoadSongFromData(path string) {
     }
 
     loadMod := func() (TrackerPlayer, error) {
-        file, err := data.OpenFile(path)
+        file, err := filesystem.Open(path)
 
         if err != nil {
             return nil, err
@@ -164,8 +165,31 @@ func (engine *Engine) LoadSongFromData(path string) {
     engine.Player = player
 }
 
+func (engine *Engine) LoadDroppedFiles() {
+    dropped := ebiten.DroppedFiles()
+    if dropped == nil {
+        return
+    }
+    entries, err := fs.ReadDir(dropped, ".")
+    if err == nil {
+        for _, file := range entries {
+            if file.IsDir() {
+                continue
+            }
+            path := file.Name()
+            log.Printf("Loading dropped file: %v", path)
+            engine.LoadSongFromFilesystem(dropped, path)
+            break
+        }
+    } else {
+        log.Printf("Error listing files: %v", err)
+    }
+}
+
 func (engine *Engine) Update() error {
     engine.updates += 1
+
+    engine.LoadDroppedFiles()
 
     keys := inpututil.AppendJustPressedKeys(nil)
     for _, key := range keys {
@@ -384,7 +408,7 @@ func main(){
         }
 
         if len(flag.Args()) == 0 {
-            engine.LoadSongFromData("strshine.s3m")
+            engine.LoadSongFromFilesystem(data.Data, "data/strshine.s3m")
         }
 
         err = ebiten.RunGame(engine)
