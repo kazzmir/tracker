@@ -295,9 +295,9 @@ func main(){
         } else {
 
             ebiten.SetTPS(60)
-            ebiten.SetWindowSize(1000, 800)
+            ebiten.SetWindowSize(1200, 800)
             ebiten.SetWindowTitle("Mod Tracker")
-            // ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+            ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
             audioContext := audio.NewContext(sampleRate)
 
@@ -364,9 +364,9 @@ func main(){
 
         } else {
             ebiten.SetTPS(60)
-            ebiten.SetWindowSize(1000, 800)
+            ebiten.SetWindowSize(1200, 800)
             ebiten.SetWindowTitle("Mod Tracker")
-            // ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+            ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
             audioContext := audio.NewContext(sampleRate)
 

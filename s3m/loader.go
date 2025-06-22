@@ -66,7 +66,7 @@ func (note *Note) GetName() string {
         octave := note.Note / 16
         noteNumber := note.Note % 16
 
-        names := []string{"C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-"}
+        names := []string{"C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-", "", "", "", ""}
 
         return names[noteNumber] + fmt.Sprintf("%d", octave + 1)
     }
@@ -76,6 +76,10 @@ func (note *Note) GetName() string {
 
 func (note *Note) GetEffectName() string {
     if note.EffectNumber > 0 || note.EffectParameter > 0 {
+        if note.EffectNumber == EffectSetExtra {
+            return fmt.Sprintf("S%X%X", note.EffectParameter >> 4, note.EffectParameter & 0xf)
+        }
+
         return fmt.Sprintf("%c%02X", 'A' + note.EffectNumber - 1, note.EffectParameter)
     }
 
