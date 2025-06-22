@@ -341,7 +341,8 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
 
     windowActive := false
     makeLoadWindow := func() *widget.Window {
-        window := widget.NewContainer(
+        var window *widget.Window
+        windowContainer := widget.NewContainer(
             widget.ContainerOpts.Layout(widget.NewRowLayout(
                 widget.RowLayoutOpts.Direction(widget.DirectionVertical),
                 widget.RowLayoutOpts.Spacing(2),
@@ -362,12 +363,57 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
             })),
         ))
 
-        return widget.NewWindow(
-            widget.WindowOpts.Contents(window),
+        buttonRow := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+                widget.RowLayoutOpts.Spacing(8),
+            )),
+            widget.ContainerOpts.WidgetOpts(
+                widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
+                    HorizontalPosition: widget.AnchorLayoutPositionEnd,
+                    VerticalPosition: widget.AnchorLayoutPositionEnd,
+                }),
+            ),
+        )
+
+        closeButton := widget.NewButton(
+            widget.ButtonOpts.Image(makeNineRoundedButtonImage(100, 30, 5, color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255})),
+            widget.ButtonOpts.Text("Close", face, &widget.ButtonTextColor{
+                Idle: color.White,
+            }),
+            widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
+                windowActive = false
+                window.Close()
+            }),
+        )
+
+        loadButton := widget.NewButton(
+            widget.ButtonOpts.Image(makeNineRoundedButtonImage(100, 30, 5, color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255})),
+            widget.ButtonOpts.Text("Load", face, &widget.ButtonTextColor{
+                Idle: color.White,
+            }),
+            widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
+                windowActive = false
+                window.Close()
+                log.Printf("Do load song")
+            }),
+        )
+
+        buttonRow.AddChild(loadButton)
+        buttonRow.AddChild(closeButton)
+
+        windowContainer.AddChild(buttonRow)
+
+        window = widget.NewWindow(
+            widget.WindowOpts.Contents(windowContainer),
             widget.WindowOpts.TitleBar(titleContainer, 25),
             widget.WindowOpts.MinSize(200, 200),
-            widget.WindowOpts.MaxSize(400, 700),
+            // widget.WindowOpts.MaxSize(400, 700),
+            widget.WindowOpts.Draggable(),
+            widget.WindowOpts.Resizeable(),
         )
+
+        return window
     }
 
     currentRowHighlight := 0
@@ -409,7 +455,7 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
                 log.Printf("Load new song")
 
                 window := makeLoadWindow()
-                window.SetLocation(image.Rect(80, 20, 1000, 1000))
+                window.SetLocation(image.Rect(80, 20, 500, 500))
 
                 ui.AddWindow(window)
                 windowActive = true
