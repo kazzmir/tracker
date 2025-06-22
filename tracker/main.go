@@ -383,6 +383,10 @@ func main(){
             return
         }
 
+        if len(flag.Args()) == 0 {
+            engine.LoadSongFromData("strshine.s3m")
+        }
+
         err = ebiten.RunGame(engine)
         if err != nil {
             log.Printf("Error: %v", err)
