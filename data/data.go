@@ -46,3 +46,7 @@ func ListFiles() []string {
     }
     return files
 }
+
+func OpenFile(path string) (fs.File, error) {
+    return Data.Open("data/" + path)
+}

@@ -6,6 +6,7 @@ import (
     "time"
     "io"
     "sync"
+    "bytes"
     // for discard
     // "io/ioutil"
     "flag"
@@ -39,6 +40,11 @@ type TrackerPlayer interface {
 }
 
 type System struct {
+    engine *Engine
+}
+
+func (system *System) LoadSong(path string) {
+    system.engine.LoadSongFromData(path)
 }
 
 func (system *System) GetFiles() []string {
@@ -63,7 +69,7 @@ func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, err
         AudioContext: audioContext,
     }
 
-    engine.UI, engine.UIHooks = makeUI(player, &System{})
+    engine.UI, engine.UIHooks = makeUI(player, &System{engine: engine})
 
     player.SetOnChangeRow(engine.UIHooks.UpdateRow)
     player.SetOnChangeOrder(engine.UIHooks.UpdateOrder)
@@ -81,6 +87,80 @@ func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, err
     }
 
     return engine, nil
+}
+
+func (engine *Engine) LoadSongFromData(path string) {
+    loadS3m := func() (TrackerPlayer, error) {
+        file, err := data.OpenFile(path)
+        if err != nil {
+            return nil, err
+        }
+        defer file.Close()
+
+        var buffer bytes.Buffer
+        io.Copy(&buffer, file)
+
+        loaded, err := s3m.Load(bytes.NewReader(buffer.Bytes()))
+        if err != nil {
+            return nil, err
+        }
+
+        return s3m.MakePlayer(loaded, engine.AudioContext.SampleRate()), nil
+    }
+
+    loadMod := func() (TrackerPlayer, error) {
+        file, err := data.OpenFile(path)
+
+        if err != nil {
+            return nil, err
+        }
+        defer file.Close()
+
+        loaded, err := mod.Load(file)
+        if err != nil {
+            return nil, err
+        }
+
+        return mod.MakePlayer(loaded, engine.AudioContext.SampleRate()), nil
+    }
+
+    player, err := loadS3m()
+    if err != nil {
+        player, err = loadMod()
+    }
+
+    if err != nil {
+        log.Printf("Not an s3m or mod file %v: %v", path, err)
+        return
+    }
+
+    engine.UI, engine.UIHooks = makeUI(player, &System{engine: engine})
+
+    player.SetOnChangeRow(engine.UIHooks.UpdateRow)
+    player.SetOnChangeOrder(engine.UIHooks.UpdateOrder)
+    player.SetOnChangeSpeed(engine.UIHooks.UpdateSpeed)
+
+    for _, channel := range engine.Players {
+        channel.Pause()
+        channel.Close()
+    }
+
+    engine.Players = nil
+
+    for _, channel := range player.GetChannelReaders() {
+        playChannel, err := engine.AudioContext.NewPlayerF32(channel)
+        if err != nil {
+            log.Printf("Could not create audio player for channel: %v", err)
+            continue
+        }
+        playChannel.SetBufferSize(time.Second / 20)
+        playChannel.SetVolume(0.3)
+        engine.Players = append(engine.Players, playChannel)
+        // playChannel.Play()
+    }
+
+    engine.Start = sync.Once{}
+    engine.Player = player
 }
 
 func (engine *Engine) Update() error {

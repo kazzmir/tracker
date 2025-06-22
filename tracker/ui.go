@@ -86,6 +86,7 @@ type UIPlayer interface {
 
 type SystemInterface interface {
     GetFiles() []string
+    LoadSong(name string)
 }
 
 func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
@@ -464,7 +465,13 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
                 windowActive = false
                 window.Close()
-                log.Printf("Do load song")
+
+                selected := fileList.SelectedEntry()
+                if selected != nil {
+                    log.Printf("Do load song: %v", selected)
+                    system.LoadSong(selected.(string))
+                }
+
             }),
             widget.ButtonOpts.TextPadding(widget.Insets{
                 Left: 50,
