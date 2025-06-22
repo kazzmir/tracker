@@ -83,21 +83,19 @@ func MakeS3MEngine(s3mPlayer *s3m.Player, audioContext *audio.Context) (*Engine,
         AudioContext: audioContext,
     }
 
-    engine.UI = makeDummyUI()
+    engine.UI, engine.UIHooks = makeUI(s3mPlayer)
 
-    /*
-    modPlayer.OnChangeRow = func(row int) {
+    s3mPlayer.OnChangeRow = func(row int) {
         engine.UIHooks.UpdateRow(row)
     }
 
-    modPlayer.OnChangeOrder = func(order int, pattern int) {
+    s3mPlayer.OnChangeOrder = func(order int, pattern int) {
         engine.UIHooks.UpdateOrder(order,pattern)
     }
 
-    modPlayer.OnChangeSpeed = func(speed int, bpm int) {
+    s3mPlayer.OnChangeSpeed = func(speed int, bpm int) {
         engine.UIHooks.UpdateSpeed(speed, bpm)
     }
-    */
 
     for _, channel := range s3mPlayer.Channels {
         playChannel, err := audioContext.NewPlayerF32(channel)
@@ -297,9 +295,9 @@ func main(){
         } else {
 
             ebiten.SetTPS(60)
-            ebiten.SetWindowSize(800, 800)
+            ebiten.SetWindowSize(1200, 800)
             ebiten.SetWindowTitle("Mod Tracker")
-            // ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+            ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
             audioContext := audio.NewContext(sampleRate)
 
@@ -366,9 +364,9 @@ func main(){
 
         } else {
             ebiten.SetTPS(60)
-            ebiten.SetWindowSize(800, 800)
+            ebiten.SetWindowSize(1200, 800)
             ebiten.SetWindowTitle("Mod Tracker")
-            // ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+            ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
             audioContext := audio.NewContext(sampleRate)
 

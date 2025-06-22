@@ -46,6 +46,28 @@ type Note struct {
     EffectParameter byte // 0-255
 }
 
+func (note *Note) GetEffectName() string {
+    if note.EffectNumber > 0 || note.EffectParameter > 0 {
+        return fmt.Sprintf("%X%02X", note.EffectNumber, note.EffectParameter)
+    }
+
+    return "..."
+}
+
+func (note *Note) GetName() string {
+    if note.PeriodFrequency > 0 {
+        return fmt.Sprintf("%v", ConvertToNote(note.PeriodFrequency))
+    }
+    return "..."
+}
+
+func (note *Note) GetSampleName() string {
+    if note.SampleNumber > 0 {
+        return fmt.Sprintf("%02d", note.SampleNumber)
+    }
+    return ".."
+}
+
 type Row struct {
     Notes []Note
 }
