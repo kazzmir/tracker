@@ -238,11 +238,6 @@ func main(){
         defer pprof.StopCPUProfile()
     }
 
-    /*
-    var modFile *mod.ModFile
-    var s3mFile *s3m.S3MFile
-    */
-
     var player TrackerPlayer = &DummyPlayer{}
 
     sampleRate := 44100
