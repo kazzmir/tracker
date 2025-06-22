@@ -29,6 +29,7 @@ type UIHooks struct {
     UpdateOrder func(int, int)
     UpdateSpeed func(int, int)
     LoadSong func()
+    Pause func()
 }
 func loadFont(size float64) (text.Face, error) {
     source, err := text.NewGoTextFaceSource(bytes.NewReader(FuturaTTF))
@@ -173,6 +174,9 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     )
     moreInfoContainer.AddChild(widget.NewText(
         widget.TextOpts.Text("(L)oad Song", face, color.White),
+    ))
+    moreInfoContainer.AddChild(widget.NewText(
+        widget.TextOpts.Text("(P)ause/Unpause", face, color.White),
     ))
     moreInfoContainer.AddChild(widget.NewText(
         widget.TextOpts.Text("Tracker by Jon Rafkind", face, color.White),
@@ -535,7 +539,30 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         return window
     }
 
+    makePauseWindow := func() *widget.Window {
+        paused := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewAnchorLayout()),
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 0xa0, G: 0x0, B: 0x0, A: 200})),
+        )
+
+        paused.AddChild(widget.NewText(
+            widget.TextOpts.Text("Paused", face, color.White),
+            widget.TextOpts.WidgetOpts(widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
+                HorizontalPosition: widget.AnchorLayoutPositionCenter,
+                VerticalPosition: widget.AnchorLayoutPositionCenter,
+            })),
+        ))
+
+        window := widget.NewWindow(
+            widget.WindowOpts.Contents(paused),
+        )
+
+        return window
+    }
+
     currentRowHighlight := 0
+
+    var pauseWindow *widget.Window
 
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
@@ -578,6 +605,18 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
                 ui.AddWindow(window)
                 windowActive = true
+            }
+        },
+        Pause: func() {
+            if !windowActive {
+                pauseWindow = makePauseWindow()
+                pauseWindow.SetLocation(image.Rect(200, 180, 400, 180 + 100))
+                ui.AddWindow(pauseWindow)
+                windowActive = true
+            } else if pauseWindow != nil {
+                pauseWindow.Close()
+                pauseWindow = nil
+                windowActive = false
             }
         },
     }
