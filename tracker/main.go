@@ -61,6 +61,7 @@ type Engine struct {
     Players []*audio.Player
     Start sync.Once
     updates uint64
+    Paused bool
 }
 
 func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, error) {
@@ -183,6 +184,18 @@ func (engine *Engine) Update() error {
                 if engine.UIHooks.LoadSong != nil {
                     engine.UIHooks.LoadSong()
                 }
+            case ebiten.KeyP:
+                engine.Paused = !engine.Paused
+                if engine.UIHooks.Pause != nil {
+                    engine.UIHooks.Pause()
+                }
+                for _, player := range engine.Players {
+                    if engine.Paused {
+                        player.Pause()
+                    } else {
+                        player.Play()
+                    }
+                }
         }
     }
 
@@ -194,7 +207,9 @@ func (engine *Engine) Update() error {
                 }
             })
         }
-        engine.Player.Update(1.0/60)
+        if !engine.Paused {
+            engine.Player.Update(1.0/60)
+        }
     }
 
     engine.UI.Update()
