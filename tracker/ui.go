@@ -338,6 +338,23 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
         Container: rootContainer,
     }
 
+    makeLoadWindow := func() *widget.Window {
+        window := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                widget.RowLayoutOpts.Spacing(2),
+            )),
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255})),
+        )
+
+        return widget.NewWindow(
+            widget.WindowOpts.Contents(window),
+            // widget.WindowOpts.Title("Load Song"),
+            widget.WindowOpts.MinSize(200, 200),
+            widget.WindowOpts.MaxSize(300, 300),
+        )
+    }
+
     currentRowHighlight := 0
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
@@ -373,6 +390,8 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
         },
         LoadSong: func() {
             log.Printf("Load new song")
+
+            ui.AddWindow(makeLoadWindow())
         },
     }
 
