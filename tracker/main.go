@@ -295,7 +295,7 @@ func main(){
         } else {
 
             ebiten.SetTPS(60)
-            ebiten.SetWindowSize(800, 800)
+            ebiten.SetWindowSize(1000, 800)
             ebiten.SetWindowTitle("Mod Tracker")
             // ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
@@ -364,7 +364,7 @@ func main(){
 
         } else {
             ebiten.SetTPS(60)
-            ebiten.SetWindowSize(800, 800)
+            ebiten.SetWindowSize(1000, 800)
             ebiten.SetWindowTitle("Mod Tracker")
             // ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 

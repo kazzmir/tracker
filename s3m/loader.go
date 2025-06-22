@@ -62,6 +62,15 @@ type Note struct {
 }
 
 func (note *Note) GetName() string {
+    if note.ChangeNote {
+        octave := note.Note / 16
+        noteNumber := note.Note % 16
+
+        names := []string{"C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-"}
+
+        return names[noteNumber] + fmt.Sprintf("%d", octave + 1)
+    }
+
     return "..."
 }
 

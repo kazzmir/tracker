@@ -338,23 +338,25 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
     currentRowHighlight := 0
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
-            top := row - 10
-            if top < 0 {
-                top = 0
-            }
-            position := float64(top) / (64 + 10)
+            if row < len(rowContainers) {
+                top := row - 10
+                if top < 0 {
+                    top = 0
+                }
+                position := float64(top) / (64 + 10)
 
-            for _, scroller := range scrollers {
-                scroller.ScrollTop = position
-            }
-            // log.Printf("Set scroll top to %v", rowScroll.ScrollTop)
+                for _, scroller := range scrollers {
+                    scroller.ScrollTop = position
+                }
+                // log.Printf("Set scroll top to %v", rowScroll.ScrollTop)
 
-            for _, container := range rowContainers[currentRowHighlight] {
-                container.BackgroundImage = nil
-            }
-            currentRowHighlight = row
-            for _, container := range rowContainers[row] {
-                container.BackgroundImage = ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128})
+                for _, container := range rowContainers[currentRowHighlight] {
+                    container.BackgroundImage = nil
+                }
+                currentRowHighlight = row
+                for _, container := range rowContainers[row] {
+                    container.BackgroundImage = ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128})
+                }
             }
         },
         UpdateOrder: func(order int, pattern int) {
