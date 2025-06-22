@@ -14,7 +14,7 @@ import (
 
     "github.com/kazzmir/tracker/mod"
     "github.com/kazzmir/tracker/s3m"
-    "github.com/kazzmir/tracker/data"
+    // "github.com/kazzmir/tracker/data"
 
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -243,7 +243,7 @@ func main(){
     var s3mFile *s3m.S3MFile
     */
 
-    var player TrackerPlayer
+    var player TrackerPlayer = &DummyPlayer{}
 
     sampleRate := 44100
 
@@ -267,6 +267,7 @@ func main(){
             player = s3m.MakePlayer(s3mFile, sampleRate)
         }
     } else {
+        /*
         dataFile, name, err := data.FindMod()
         if err != nil {
             log.Printf("Error finding mod file: %v", err)
@@ -283,6 +284,7 @@ func main(){
             player = mod.MakePlayer(modFile, sampleRate)
         }
         dataFile.Close()
+        */
     }
 
     if *wav != "" {
