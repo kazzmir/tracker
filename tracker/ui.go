@@ -101,17 +101,32 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
     )
 
+    topContainer := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewGridLayout(
+            widget.GridLayoutOpts.Columns(3),
+            widget.GridLayoutOpts.DefaultStretch(true, true),
+            widget.GridLayoutOpts.Stretch([]bool{true, false, true}, []bool{true, false}),
+        )),
+        widget.ContainerOpts.WidgetOpts(
+            widget.WidgetOpts.LayoutData(widget.RowLayoutData{
+                Stretch: true,
+            }),
+        ),
+    )
+
     // put info stuff here
     infoContainer := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
             widget.RowLayoutOpts.Direction(widget.DirectionVertical),
             widget.RowLayoutOpts.Spacing(1),
         )),
+        /*
         widget.ContainerOpts.WidgetOpts(
             widget.WidgetOpts.LayoutData(widget.RowLayoutData{
                 // Stretch: true,
             }),
         ),
+        */
         widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255})),
         /*
         widget.ContainerOpts.WidgetOpts(
@@ -140,7 +155,29 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     infoContainer.AddChild(patternText)
     infoContainer.AddChild(speedText)
 
-    rootContainer.AddChild(infoContainer)
+    rootContainer.AddChild(topContainer)
+
+    topContainer.AddChild(infoContainer)
+
+    emptyContainer := widget.NewContainer(
+    )
+
+    topContainer.AddChild(emptyContainer)
+
+    moreInfoContainer := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+            widget.RowLayoutOpts.Spacing(1),
+        )),
+        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255})),
+    )
+    moreInfoContainer.AddChild(widget.NewText(
+        widget.TextOpts.Text("(L)oad Song", face, color.White),
+    ))
+    moreInfoContainer.AddChild(widget.NewText(
+        widget.TextOpts.Text("Tracker by Jon Rafkind", face, color.White),
+    ))
+    topContainer.AddChild(moreInfoContainer)
 
     channels := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
