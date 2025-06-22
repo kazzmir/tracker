@@ -24,11 +24,18 @@ import (
 )
 
 type TrackerPlayer interface {
+    UIPlayer
+
     Update(float32)
     NextOrder()
     PreviousOrder()
     ResetRow()
     GetCurrentOrder() int
+    SetOnChangeRow(func(int))
+    SetOnChangeOrder(func(int, int))
+    SetOnChangeSpeed(func(int, int))
+    GetChannelReaders() []io.Reader
+    RenderToPCM() io.Reader
 }
 
 type Engine struct {
@@ -43,27 +50,19 @@ type Engine struct {
     updates uint64
 }
 
-func MakeEngine(modPlayer *mod.Player, audioContext *audio.Context) (*Engine, error) {
+func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, error) {
     engine := &Engine{
-        Player: modPlayer,
+        Player: player,
         AudioContext: audioContext,
     }
 
-    engine.UI, engine.UIHooks = makeUI(modPlayer)
+    engine.UI, engine.UIHooks = makeUI(player)
 
-    modPlayer.OnChangeRow = func(row int) {
-        engine.UIHooks.UpdateRow(row)
-    }
+    player.SetOnChangeRow(engine.UIHooks.UpdateRow)
+    player.SetOnChangeOrder(engine.UIHooks.UpdateOrder)
+    player.SetOnChangeSpeed(engine.UIHooks.UpdateSpeed)
 
-    modPlayer.OnChangeOrder = func(order int, pattern int) {
-        engine.UIHooks.UpdateOrder(order,pattern)
-    }
-
-    modPlayer.OnChangeSpeed = func(speed int, bpm int) {
-        engine.UIHooks.UpdateSpeed(speed, bpm)
-    }
-
-    for _, channel := range modPlayer.Channels {
+    for _, channel := range player.GetChannelReaders() {
         playChannel, err := audioContext.NewPlayerF32(channel)
         if err != nil {
             return nil, err
@@ -227,7 +226,6 @@ func main(){
         return
     }
 
-    /*
     if *profile {
         log.Println("Profiling enabled")
         f, err := os.Create("profile.out")
@@ -239,27 +237,34 @@ func main(){
         pprof.StartCPUProfile(f)
         defer pprof.StopCPUProfile()
     }
-    */
 
+    /*
     var modFile *mod.ModFile
     var s3mFile *s3m.S3MFile
+    */
+
+    var player TrackerPlayer
+
+    sampleRate := 44100
 
     if len(flag.Args()) > 0 {
         path := flag.Args()[0]
-        var err error
 
-        s3mFile, err = tryLoadS3m(path)
+        s3mFile, err := tryLoadS3m(path)
         if err != nil {
             log.Printf("Unable to load s3m: %v", err)
 
-            modFile, err = tryLoadMod(path)
+            modFile, err := tryLoadMod(path)
             if err != nil {
                 log.Printf("Error loading %v: %v", path, err)
                 return
             } else {
+                player = mod.MakePlayer(modFile, sampleRate)
                 log.Printf("Successfully loaded %v", path)
                 log.Printf("Mod name: '%v'", modFile.Name)
             }
+        } else {
+            player = s3m.MakePlayer(s3mFile, sampleRate)
         }
     } else {
         dataFile, name, err := data.FindMod()
@@ -268,125 +273,51 @@ func main(){
             return
         }
 
-        modFile, err = mod.Load(dataFile)
+        modFile, err := mod.Load(dataFile)
         if err != nil {
             log.Printf("Error loading mod file: %v", err)
             return
         } else {
             log.Printf("Successfully loaded %v", name)
             log.Printf("Mod name: '%v'", modFile.Name)
+            player = mod.MakePlayer(modFile, sampleRate)
         }
         dataFile.Close()
     }
 
-    sampleRate := 44100
+    if *wav != "" {
+        log.Printf("Rendering to %v", *wav)
 
-    if s3mFile != nil {
-        s3mPlayer := s3m.MakePlayer(s3mFile, sampleRate)
-
-        if *wav != "" {
-            log.Printf("Rendering to %v", *wav)
-
-            err := saveToWav(*wav, s3mPlayer.RenderToPCM(), sampleRate)
-            if err != nil {
-                log.Printf("Error saving to wav: %v", err)
-                return
-            }
-        } else {
-
-            ebiten.SetTPS(60)
-            ebiten.SetWindowSize(1200, 800)
-            ebiten.SetWindowTitle("Mod Tracker")
-            ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-
-            audioContext := audio.NewContext(sampleRate)
-
-            /*
-            modPlayer.CurrentOrder = 0x10
-            modPlayer.Channels[0].Mute = true
-            modPlayer.Channels[1].Mute = true
-            modPlayer.Channels[3].Mute = true
-            */
-
-            engine, err := MakeS3MEngine(s3mPlayer, audioContext)
-            if err != nil {
-                log.Printf("Error creating engine: %v", err)
-                return
-            }
-
-            err = ebiten.RunGame(engine)
-            if err != nil {
-                log.Printf("Error: %v", err)
-            }
+        err := saveToWav(*wav, player.RenderToPCM(), sampleRate)
+        if err != nil {
+            log.Printf("Error saving to wav: %v", err)
+            return
         }
-    } else if modFile != nil {
+    } else {
 
-        modPlayer := mod.MakePlayer(modFile, sampleRate)
+        ebiten.SetTPS(60)
+        ebiten.SetWindowSize(1200, 800)
+        ebiten.SetWindowTitle("Mod Tracker")
+        ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
-        if *wav != "" {
-            log.Printf("Rendering to %v", *wav)
+        audioContext := audio.NewContext(sampleRate)
 
-            err := saveToWav(*wav, modPlayer.RenderToPCM(), sampleRate)
-            if err != nil {
-                log.Printf("Error saving to wav: %v", err)
-                return
-            }
+        /*
+        modPlayer.CurrentOrder = 0x10
+        modPlayer.Channels[0].Mute = true
+        modPlayer.Channels[1].Mute = true
+        modPlayer.Channels[3].Mute = true
+        */
 
-            /*
-            reader := modPlayer.RenderToPCM()
-            out, err := os.Create(*wav)
-            if err != nil {
-                log.Printf("Error creating output file: %v", err)
-                return
-            }
-            io.Copy(out, reader)
-            out.Close()
-            */
+        engine, err := MakeEngine(player, audioContext)
+        if err != nil {
+            log.Printf("Error creating engine: %v", err)
+            return
+        }
 
-            /*
-            for range 10 {
-                modPlayer = mod.MakePlayer(modFile, sampleRate)
-                io.Copy(ioutil.Discard, modPlayer.RenderToPCM())
-            }
-            */
-
-            log.Printf("Done rendering")
-
-            if *profile {
-                out, err := os.Create("profile.mem")
-                if err != nil {
-                    log.Printf("Could not create heap profile: %v", err)
-                } else {
-                    pprof.WriteHeapProfile(out)
-                    out.Close()
-                }
-            }
-
-        } else {
-            ebiten.SetTPS(60)
-            ebiten.SetWindowSize(1200, 800)
-            ebiten.SetWindowTitle("Mod Tracker")
-            ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-
-            audioContext := audio.NewContext(sampleRate)
-
-            /*
-            modPlayer.CurrentOrder = 0x10
-            modPlayer.Channels[0].Mute = true
-            modPlayer.Channels[1].Mute = true
-            modPlayer.Channels[3].Mute = true
-            */
-
-            engine, err := MakeEngine(modPlayer, audioContext)
-            if err != nil {
-                log.Printf("Error creating engine: %v", err)
-                return
-            }
-
-            err = ebiten.RunGame(engine)
-            if err != nil {
-                log.Printf("Error: %v", err)
-            }
+        err = ebiten.RunGame(engine)
+        if err != nil {
+            log.Printf("Error: %v", err)
         }
     }
 

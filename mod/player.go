@@ -649,6 +649,26 @@ func (player *Player) GetRowNote(channel int, rowNumber int) *Note {
     return &Note{}
 }
 
+func (player *Player) SetOnChangeRow(callback func(int)) {
+    player.OnChangeRow = callback
+}
+
+func (player *Player) SetOnChangeOrder(callback func(int, int)) {
+    player.OnChangeOrder = callback
+}
+
+func (player *Player) SetOnChangeSpeed(callback func(int, int)) {
+    player.OnChangeSpeed = callback
+}
+
+func (player *Player) GetChannelReaders() []io.Reader {
+    readers := make([]io.Reader, len(player.Channels))
+    for i, channel := range player.Channels {
+        readers[i] = channel
+    }
+    return readers
+}
+
 func (player *Player) GetNote(channel int) (*Note, int) {
     pattern := player.GetPattern()
     row := &player.ModFile.Patterns[pattern].Rows[player.CurrentRow]
