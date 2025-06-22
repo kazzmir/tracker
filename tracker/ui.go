@@ -433,8 +433,14 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             )),
         )
 
+        buttonImage := &widget.ButtonImage{
+            Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
+            Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
+            Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
+        }
+
         closeButton := widget.NewButton(
-            widget.ButtonOpts.Image(makeNineRoundedButtonImage(100, 30, 5, color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255})),
+            widget.ButtonOpts.Image(buttonImage),
             widget.ButtonOpts.Text("Close", face, &widget.ButtonTextColor{
                 Idle: color.White,
             }),
@@ -444,12 +450,14 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             }),
             widget.ButtonOpts.TextPadding(widget.Insets{
                 Left: 50,
+                Top: 5,
+                Bottom: 5,
                 Right: 50,
             }),
         )
 
         loadButton := widget.NewButton(
-            widget.ButtonOpts.Image(makeNineRoundedButtonImage(100, 30, 5, color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255})),
+            widget.ButtonOpts.Image(buttonImage),
             widget.ButtonOpts.Text("Load", face, &widget.ButtonTextColor{
                 Idle: color.White,
             }),
@@ -460,7 +468,9 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             }),
             widget.ButtonOpts.TextPadding(widget.Insets{
                 Left: 50,
+                Top: 5,
                 Right: 50,
+                Bottom: 5,
             }),
         )
 

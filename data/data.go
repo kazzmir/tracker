@@ -36,7 +36,12 @@ func ListFiles() []string {
     var files []string
     for _, entry := range entries {
         if !entry.IsDir() {
-            files = append(files, entry.Name())
+            info, err := entry.Info()
+            if err == nil {
+                if info.Size() > 0 {
+                    files = append(files, entry.Name())
+                }
+            }
         }
     }
     return files
