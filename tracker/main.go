@@ -14,7 +14,7 @@ import (
 
     "github.com/kazzmir/tracker/mod"
     "github.com/kazzmir/tracker/s3m"
-    // "github.com/kazzmir/tracker/data"
+    "github.com/kazzmir/tracker/data"
 
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -38,6 +38,13 @@ type TrackerPlayer interface {
     RenderToPCM() io.Reader
 }
 
+type System struct {
+}
+
+func (system *System) GetFiles() []string {
+    return data.ListFiles()
+}
+
 type Engine struct {
     Player TrackerPlayer
 
@@ -56,7 +63,7 @@ func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, err
         AudioContext: audioContext,
     }
 
-    engine.UI, engine.UIHooks = makeUI(player)
+    engine.UI, engine.UIHooks = makeUI(player, &System{})
 
     player.SetOnChangeRow(engine.UIHooks.UpdateRow)
     player.SetOnChangeOrder(engine.UIHooks.UpdateOrder)
@@ -74,41 +81,6 @@ func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, err
     }
 
     return engine, nil
-}
-
-func MakeS3MEngine(s3mPlayer *s3m.Player, audioContext *audio.Context) (*Engine, error) {
-    engine := &Engine{
-        Player: s3mPlayer,
-        AudioContext: audioContext,
-    }
-
-    engine.UI, engine.UIHooks = makeUI(s3mPlayer)
-
-    s3mPlayer.OnChangeRow = func(row int) {
-        engine.UIHooks.UpdateRow(row)
-    }
-
-    s3mPlayer.OnChangeOrder = func(order int, pattern int) {
-        engine.UIHooks.UpdateOrder(order,pattern)
-    }
-
-    s3mPlayer.OnChangeSpeed = func(speed int, bpm int) {
-        engine.UIHooks.UpdateSpeed(speed, bpm)
-    }
-
-    for _, channel := range s3mPlayer.Channels {
-        playChannel, err := audioContext.NewPlayerF32(channel)
-        if err != nil {
-            return nil, err
-        }
-        playChannel.SetBufferSize(time.Second / 20)
-        playChannel.SetVolume(0.5)
-        engine.Players = append(engine.Players, playChannel)
-        // playChannel.Play()
-    }
-
-    return engine, nil
-
 }
 
 func (engine *Engine) Update() error {

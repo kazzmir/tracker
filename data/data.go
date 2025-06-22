@@ -27,3 +27,17 @@ func FindMod() (fs.File, string, error) {
 
     return nil, "", fs.ErrNotExist
 }
+
+func ListFiles() []string {
+    entries, err := fs.ReadDir(Data, "data")
+    if err != nil {
+        return nil
+    }
+    var files []string
+    for _, entry := range entries {
+        if !entry.IsDir() {
+            files = append(files, entry.Name())
+        }
+    }
+    return files
+}

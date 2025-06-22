@@ -7,6 +7,8 @@ import (
     _ "embed"
     "log"
     "fmt"
+    "slices"
+    "cmp"
 
     "github.com/kazzmir/tracker/common"
 
@@ -41,6 +43,7 @@ func loadFont(size float64) (text.Face, error) {
 }
 
 func lighten(col color.Color, amount int) color.Color {
+    // FIXME
     return col
 }
 
@@ -81,7 +84,11 @@ type UIPlayer interface {
     GetRowNoteInfo(channel int, row int) common.NoteInfo
 }
 
-func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
+type SystemInterface interface {
+    GetFiles() []string
+}
+
+func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     face, _ := loadFont(19)
 
     rootContainer := widget.NewContainer(
@@ -343,9 +350,10 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
     makeLoadWindow := func() *widget.Window {
         var window *widget.Window
         windowContainer := widget.NewContainer(
-            widget.ContainerOpts.Layout(widget.NewRowLayout(
-                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                widget.RowLayoutOpts.Spacing(2),
+            widget.ContainerOpts.Layout(widget.NewGridLayout(
+                widget.GridLayoutOpts.Columns(1),
+                widget.GridLayoutOpts.DefaultStretch(true, true),
+                widget.GridLayoutOpts.Stretch([]bool{true, false}, []bool{true, false}),
             )),
             widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 0x0e, G: 0x4f, B: 0x65, A: 240})),
         )
@@ -363,17 +371,78 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
             })),
         ))
 
+        files := system.GetFiles()
+        slices.SortedFunc(slices.Values(files), cmp.Compare)
+
+        var entries []any
+        for _, file := range files {
+            entries = append(entries, file)
+        }
+
+        fileList := widget.NewList(
+            widget.ListOpts.Entries(entries),
+            widget.ListOpts.ScrollContainerOpts(
+                widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
+                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
+                    Mask: ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 255, B: 255, A: 255}),
+                    Disabled: ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255}),
+                }),
+            ),
+            widget.ListOpts.HideHorizontalSlider(),
+            widget.ListOpts.EntryFontFace(face),
+            widget.ListOpts.SliderOpts(
+                widget.SliderOpts.Images(&widget.SliderTrackImage{
+                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
+                    Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255}),
+                }, &widget.ButtonImage{
+                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
+                    Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
+                    Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
+                }),
+                widget.SliderOpts.MinHandleSize(20),
+                widget.SliderOpts.TrackPadding(widget.NewInsetsSimple(2)),
+            ),
+            widget.ListOpts.EntryColor(&widget.ListEntryColor{
+                Selected: color.NRGBA{R: 255, G: 255, B: 0, A: 200},
+                Unselected: color.White,
+            }),
+            widget.ListOpts.EntryLabelFunc(func (e interface{}) string {
+                return e.(string)
+            }),
+            widget.ListOpts.EntryTextPadding(widget.NewInsetsSimple(2)),
+            widget.ListOpts.EntryTextPosition(widget.TextPositionStart, widget.TextPositionCenter),
+            widget.ListOpts.EntrySelectedHandler(func (args *widget.ListEntrySelectedEventArgs) {
+                entry := args.Entry.(string)
+                log.Printf("Selected entry: %s", entry)
+            }),
+
+            /*
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 0x0e, G: 0x4f, B: 0x65, A: 240})),
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                widget.RowLayoutOpts.Spacing(2),
+            )),
+            */
+        )
+
+        /*
+        for _, name := range system.GetFiles() {
+            fileList.AddChild(widget.NewText(
+                widget.TextOpts.Text(name, face, color.White),
+            ))
+        }
+        */
+
+        windowContainer.AddChild(fileList)
+
         buttonRow := widget.NewContainer(
             widget.ContainerOpts.Layout(widget.NewRowLayout(
                 widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
-                widget.RowLayoutOpts.Spacing(8),
-            )),
-            widget.ContainerOpts.WidgetOpts(
-                widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
-                    HorizontalPosition: widget.AnchorLayoutPositionEnd,
-                    VerticalPosition: widget.AnchorLayoutPositionEnd,
+                widget.RowLayoutOpts.Spacing(10),
+                widget.RowLayoutOpts.Padding(widget.Insets{
+                    Left: 40,
                 }),
-            ),
+            )),
         )
 
         closeButton := widget.NewButton(
@@ -384,6 +453,10 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
             widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
                 windowActive = false
                 window.Close()
+            }),
+            widget.ButtonOpts.TextPadding(widget.Insets{
+                Left: 50,
+                Right: 50,
             }),
         )
 
@@ -397,6 +470,10 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
                 window.Close()
                 log.Printf("Do load song")
             }),
+            widget.ButtonOpts.TextPadding(widget.Insets{
+                Left: 50,
+                Right: 50,
+            }),
         )
 
         buttonRow.AddChild(loadButton)
@@ -407,7 +484,7 @@ func makeUI(player UIPlayer) (*ebitenui.UI, UIHooks) {
         window = widget.NewWindow(
             widget.WindowOpts.Contents(windowContainer),
             widget.WindowOpts.TitleBar(titleContainer, 25),
-            widget.WindowOpts.MinSize(200, 200),
+            widget.WindowOpts.MinSize(350, 200),
             // widget.WindowOpts.MaxSize(400, 700),
             widget.WindowOpts.Draggable(),
             widget.WindowOpts.Resizeable(),
