@@ -52,6 +52,10 @@ func (system *System) GetFiles() []string {
     return data.ListFiles()
 }
 
+func (system *System) DoPause() {
+    system.engine.DoPause()
+}
+
 type Engine struct {
     Player TrackerPlayer
 
@@ -186,6 +190,17 @@ func (engine *Engine) LoadDroppedFiles() {
     }
 }
 
+func (engine *Engine) DoPause() {
+    engine.Paused = !engine.Paused
+    for _, player := range engine.Players {
+        if engine.Paused {
+            player.Pause()
+        } else {
+            player.Play()
+        }
+    }
+}
+
 func (engine *Engine) Update() error {
     engine.updates += 1
 
@@ -209,16 +224,8 @@ func (engine *Engine) Update() error {
                     engine.UIHooks.LoadSong()
                 }
             case ebiten.KeyP:
-                engine.Paused = !engine.Paused
                 if engine.UIHooks.Pause != nil {
                     engine.UIHooks.Pause()
-                }
-                for _, player := range engine.Players {
-                    if engine.Paused {
-                        player.Pause()
-                    } else {
-                        player.Play()
-                    }
                 }
         }
     }
