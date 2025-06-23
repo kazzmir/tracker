@@ -71,26 +71,10 @@ type Engine struct {
 
 func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, error) {
     engine := &Engine{
-        Player: player,
         AudioContext: audioContext,
     }
 
-    engine.UI, engine.UIHooks = makeUI(player, &System{engine: engine})
-
-    player.SetOnChangeRow(engine.UIHooks.UpdateRow)
-    player.SetOnChangeOrder(engine.UIHooks.UpdateOrder)
-    player.SetOnChangeSpeed(engine.UIHooks.UpdateSpeed)
-
-    for _, channel := range player.GetChannelReaders() {
-        playChannel, err := audioContext.NewPlayerF32(channel)
-        if err != nil {
-            return nil, err
-        }
-        playChannel.SetBufferSize(time.Second / 20)
-        playChannel.SetVolume(0.6)
-        engine.Players = append(engine.Players, playChannel)
-        // playChannel.Play()
-    }
+    engine.Initialize(player)
 
     return engine, nil
 }
@@ -140,6 +124,10 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
         return
     }
 
+    engine.Initialize(player)
+}
+
+func (engine *Engine) Initialize(player TrackerPlayer) {
     engine.UI, engine.UIHooks = makeUI(player, &System{engine: engine})
 
     player.SetOnChangeRow(engine.UIHooks.UpdateRow)
@@ -167,6 +155,7 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
 
     engine.Start = sync.Once{}
     engine.Player = player
+
 }
 
 func (engine *Engine) LoadDroppedFiles() {
