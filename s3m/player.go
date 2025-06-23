@@ -462,12 +462,10 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         }
     }
 
-    player.Channels = channels[:]
+    player.Channels = channels[6:7]
 
-    /*
-    player.S3M.Orders = []byte{1}
+    player.S3M.Orders = []byte{6}
     player.S3M.SongLength = 1
-    */
 
     // player.S3M.SongLength = 1
 
