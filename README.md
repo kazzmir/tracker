@@ -4,6 +4,10 @@ A mod/s3m tracker written in Golang and Ebiten
 
 ![tracker](./screenshot1.png)
 
+# Online demo
+
+https://kazzmir.itch.io/tracker
+
 # Run
 
 ```
