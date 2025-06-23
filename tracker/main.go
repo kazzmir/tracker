@@ -48,6 +48,14 @@ func (system *System) LoadSong(path string) {
     system.engine.LoadSongFromFilesystem(data.Data, "data/" + path)
 }
 
+func (system *System) GetGlobalVolume() int {
+    return int(system.engine.volume * 100)
+}
+
+func (system *System) SetGlobalVolume(volume int) {
+    system.engine.SetVolume(float64(volume) / 100.0)
+}
+
 func (system *System) GetFiles() []string {
     return data.ListFiles()
 }
@@ -63,6 +71,8 @@ type Engine struct {
     UI *ebitenui.UI
     UIHooks UIHooks
 
+    volume float64
+
     Players []*audio.Player
     Start sync.Once
     updates uint64
@@ -72,6 +82,7 @@ type Engine struct {
 func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, error) {
     engine := &Engine{
         AudioContext: audioContext,
+        volume: 0.6,
     }
 
     engine.Initialize(player)
@@ -87,8 +98,14 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
         }
         defer file.Close()
 
+        // FIXME: use a custom seekable buffering object that only loads sections
+        // of the file into memory as needed so that we abort loading a file if it
+        // is not an s3m
         var buffer bytes.Buffer
-        io.Copy(&buffer, file)
+        _, err = io.Copy(&buffer, file)
+        if err != nil {
+            return nil, err
+        }
 
         loaded, err := s3m.Load(bytes.NewReader(buffer.Bytes()))
         if err != nil {
@@ -148,7 +165,7 @@ func (engine *Engine) Initialize(player TrackerPlayer) {
             continue
         }
         playChannel.SetBufferSize(time.Second / 20)
-        playChannel.SetVolume(0.6)
+        playChannel.SetVolume(engine.volume)
         engine.Players = append(engine.Players, playChannel)
         // playChannel.Play()
     }
@@ -156,6 +173,13 @@ func (engine *Engine) Initialize(player TrackerPlayer) {
     engine.Start = sync.Once{}
     engine.Player = player
 
+}
+
+func (engine *Engine) SetVolume(volume float64) {
+    engine.volume = volume
+    for _, player := range engine.Players {
+        player.SetVolume(volume)
+    }
 }
 
 func (engine *Engine) LoadDroppedFiles() {
