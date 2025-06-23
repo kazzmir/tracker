@@ -87,7 +87,7 @@ func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, err
             return nil, err
         }
         playChannel.SetBufferSize(time.Second / 20)
-        playChannel.SetVolume(0.3)
+        playChannel.SetVolume(0.6)
         engine.Players = append(engine.Players, playChannel)
         // playChannel.Play()
     }
@@ -160,7 +160,7 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
             continue
         }
         playChannel.SetBufferSize(time.Second / 20)
-        playChannel.SetVolume(0.3)
+        playChannel.SetVolume(0.6)
         engine.Players = append(engine.Players, playChannel)
         // playChannel.Play()
     }
