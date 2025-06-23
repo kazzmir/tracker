@@ -87,11 +87,204 @@ type UIPlayer interface {
 
 type SystemInterface interface {
     GetFiles() []string
+    DoPause()
     LoadSong(name string)
 }
 
 func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     face, _ := loadFont(19)
+
+    ui := ebitenui.UI{
+    }
+
+    buttonImage := &widget.ButtonImage{
+        Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
+        Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
+        Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
+    }
+
+    windowActive := false
+    makeLoadWindow := func() *widget.Window {
+        var window *widget.Window
+        windowContainer := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewGridLayout(
+                widget.GridLayoutOpts.Columns(1),
+                widget.GridLayoutOpts.DefaultStretch(true, true),
+                widget.GridLayoutOpts.Stretch([]bool{true, false}, []bool{true, false}),
+            )),
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 0x0e, G: 0x4f, B: 0x65, A: 240})),
+        )
+
+        titleContainer := widget.NewContainer(
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255})),
+            widget.ContainerOpts.Layout(widget.NewAnchorLayout()),
+        )
+
+        titleContainer.AddChild(widget.NewText(
+            widget.TextOpts.Text("Load Song", face, color.White),
+            widget.TextOpts.WidgetOpts(widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
+                HorizontalPosition: widget.AnchorLayoutPositionCenter,
+                VerticalPosition: widget.AnchorLayoutPositionCenter,
+            })),
+        ))
+
+        files := system.GetFiles()
+        slices.SortedFunc(slices.Values(files), cmp.Compare)
+
+        var entries []any
+        for _, file := range files {
+            entries = append(entries, file)
+        }
+
+        fileList := widget.NewList(
+            widget.ListOpts.Entries(entries),
+            widget.ListOpts.ScrollContainerOpts(
+                widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
+                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 200}),
+                    Mask: ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 255, B: 255, A: 200}),
+                    Disabled: ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255}),
+                }),
+            ),
+            widget.ListOpts.HideHorizontalSlider(),
+            widget.ListOpts.EntryFontFace(face),
+            widget.ListOpts.SliderOpts(
+                widget.SliderOpts.Images(&widget.SliderTrackImage{
+                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
+                    Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255}),
+                }, &widget.ButtonImage{
+                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x70, G: 0x28, B: 0x0f, A: 255}),
+                    Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x92, G: 0x34, B: 0x14, A: 255}),
+                    Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0xc8, G: 0x47, B: 0x1b, A: 255}),
+                }),
+                widget.SliderOpts.MinHandleSize(20),
+                widget.SliderOpts.TrackPadding(widget.NewInsetsSimple(2)),
+            ),
+            widget.ListOpts.EntryColor(&widget.ListEntryColor{
+                Selected: color.NRGBA{R: 255, G: 255, B: 0, A: 255},
+                Unselected: color.White,
+                FocusedBackground: color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255},
+                // SelectedBackground: color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255},
+                SelectedFocusedBackground: color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255},
+                SelectingFocusedBackground: color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255},
+            }),
+            widget.ListOpts.EntryLabelFunc(func (e interface{}) string {
+                return e.(string)
+            }),
+            widget.ListOpts.EntryTextPadding(widget.NewInsetsSimple(2)),
+            widget.ListOpts.EntryTextPosition(widget.TextPositionStart, widget.TextPositionCenter),
+            widget.ListOpts.EntrySelectedHandler(func (args *widget.ListEntrySelectedEventArgs) {
+                entry := args.Entry.(string)
+                log.Printf("Selected entry: %s", entry)
+            }),
+        )
+
+        windowContainer.AddChild(fileList)
+
+        buttonRow := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+                widget.RowLayoutOpts.Spacing(10),
+                widget.RowLayoutOpts.Padding(widget.Insets{
+                    Left: 40,
+                }),
+            )),
+        )
+
+        closeButton := widget.NewButton(
+            widget.ButtonOpts.Image(buttonImage),
+            widget.ButtonOpts.Text("Close", face, &widget.ButtonTextColor{
+                Idle: color.White,
+            }),
+            widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
+                windowActive = false
+                window.Close()
+            }),
+            widget.ButtonOpts.TextPadding(widget.Insets{
+                Left: 50,
+                Top: 5,
+                Bottom: 5,
+                Right: 50,
+            }),
+        )
+
+        loadButton := widget.NewButton(
+            widget.ButtonOpts.Image(buttonImage),
+            widget.ButtonOpts.Text("Load", face, &widget.ButtonTextColor{
+                Idle: color.White,
+            }),
+            widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
+                windowActive = false
+                window.Close()
+
+                selected := fileList.SelectedEntry()
+                if selected != nil {
+                    log.Printf("Do load song: %v", selected)
+                    system.LoadSong(selected.(string))
+                }
+
+            }),
+            widget.ButtonOpts.TextPadding(widget.Insets{
+                Left: 50,
+                Top: 5,
+                Right: 50,
+                Bottom: 5,
+            }),
+        )
+
+        buttonRow.AddChild(loadButton)
+        buttonRow.AddChild(closeButton)
+
+        windowContainer.AddChild(buttonRow)
+
+        window = widget.NewWindow(
+            widget.WindowOpts.Contents(windowContainer),
+            widget.WindowOpts.TitleBar(titleContainer, 25),
+            widget.WindowOpts.MinSize(350, 200),
+            // widget.WindowOpts.MaxSize(400, 700),
+            widget.WindowOpts.Draggable(),
+            widget.WindowOpts.Resizeable(),
+        )
+
+        return window
+    }
+
+    var pauseWindow *widget.Window
+
+    makePauseWindow := func() *widget.Window {
+        paused := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewAnchorLayout()),
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 0xa0, G: 0x0, B: 0x0, A: 200})),
+        )
+
+        paused.AddChild(widget.NewText(
+            widget.TextOpts.Text("Paused", face, color.White),
+            widget.TextOpts.WidgetOpts(widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
+                HorizontalPosition: widget.AnchorLayoutPositionCenter,
+                VerticalPosition: widget.AnchorLayoutPositionCenter,
+            })),
+        ))
+
+        window := widget.NewWindow(
+            widget.WindowOpts.Contents(paused),
+        )
+
+        return window
+    }
+
+    doPause := func() {
+        if !windowActive {
+            pauseWindow = makePauseWindow()
+            pauseWindow.SetLocation(image.Rect(200, 180, 400, 180 + 100))
+            ui.AddWindow(pauseWindow)
+            windowActive = true
+            system.DoPause()
+        } else if pauseWindow != nil {
+            pauseWindow.Close()
+            pauseWindow = nil
+            windowActive = false
+            system.DoPause()
+        }
+    }
 
     rootContainer := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
@@ -165,6 +358,18 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     topContainer.AddChild(emptyContainer)
 
+    showLoadWindow := func() {
+        if !windowActive {
+            log.Printf("Load new song")
+
+            window := makeLoadWindow()
+            window.SetLocation(image.Rect(80, 20, 500, 500))
+
+            ui.AddWindow(window)
+            windowActive = true
+        }
+    }
+
     moreInfoContainer := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
             widget.RowLayoutOpts.Direction(widget.DirectionVertical),
@@ -172,11 +377,35 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         )),
         widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255})),
     )
-    moreInfoContainer.AddChild(widget.NewText(
-        widget.TextOpts.Text("(L)oad Song", face, color.White),
+    moreInfoContainer.AddChild(widget.NewButton(
+        widget.ButtonOpts.Image(buttonImage),
+        widget.ButtonOpts.Text("(L)oad Song", face, &widget.ButtonTextColor{
+            Idle: color.White,
+        }),
+        widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
+            showLoadWindow()
+        }),
+        widget.ButtonOpts.TextPadding(widget.Insets{
+            Left: 10,
+            Top: 5,
+            Bottom: 5,
+            Right: 10,
+        }),
     ))
-    moreInfoContainer.AddChild(widget.NewText(
-        widget.TextOpts.Text("(P)ause/Unpause", face, color.White),
+    moreInfoContainer.AddChild(widget.NewButton(
+        widget.ButtonOpts.Image(buttonImage),
+        widget.ButtonOpts.Text("(P)ause/Unpause", face, &widget.ButtonTextColor{
+            Idle: color.White,
+        }),
+        widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
+            doPause()
+        }),
+        widget.ButtonOpts.TextPadding(widget.Insets{
+            Left: 10,
+            Top: 5,
+            Bottom: 5,
+            Right: 10,
+        }),
     ))
     moreInfoContainer.AddChild(widget.NewText(
         widget.TextOpts.Text("Tracker by Jon Rafkind", face, color.White),
@@ -384,185 +613,9 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     rootContainer.AddChild(channels)
 
-    ui := ebitenui.UI{
-        Container: rootContainer,
-    }
-
-    windowActive := false
-    makeLoadWindow := func() *widget.Window {
-        var window *widget.Window
-        windowContainer := widget.NewContainer(
-            widget.ContainerOpts.Layout(widget.NewGridLayout(
-                widget.GridLayoutOpts.Columns(1),
-                widget.GridLayoutOpts.DefaultStretch(true, true),
-                widget.GridLayoutOpts.Stretch([]bool{true, false}, []bool{true, false}),
-            )),
-            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 0x0e, G: 0x4f, B: 0x65, A: 240})),
-        )
-
-        titleContainer := widget.NewContainer(
-            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255})),
-            widget.ContainerOpts.Layout(widget.NewAnchorLayout()),
-        )
-
-        titleContainer.AddChild(widget.NewText(
-            widget.TextOpts.Text("Load Song", face, color.White),
-            widget.TextOpts.WidgetOpts(widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
-                HorizontalPosition: widget.AnchorLayoutPositionCenter,
-                VerticalPosition: widget.AnchorLayoutPositionCenter,
-            })),
-        ))
-
-        files := system.GetFiles()
-        slices.SortedFunc(slices.Values(files), cmp.Compare)
-
-        var entries []any
-        for _, file := range files {
-            entries = append(entries, file)
-        }
-
-        fileList := widget.NewList(
-            widget.ListOpts.Entries(entries),
-            widget.ListOpts.ScrollContainerOpts(
-                widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
-                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 200}),
-                    Mask: ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 255, B: 255, A: 200}),
-                    Disabled: ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255}),
-                }),
-            ),
-            widget.ListOpts.HideHorizontalSlider(),
-            widget.ListOpts.EntryFontFace(face),
-            widget.ListOpts.SliderOpts(
-                widget.SliderOpts.Images(&widget.SliderTrackImage{
-                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
-                    Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255}),
-                }, &widget.ButtonImage{
-                    Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x70, G: 0x28, B: 0x0f, A: 255}),
-                    Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x92, G: 0x34, B: 0x14, A: 255}),
-                    Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0xc8, G: 0x47, B: 0x1b, A: 255}),
-                }),
-                widget.SliderOpts.MinHandleSize(20),
-                widget.SliderOpts.TrackPadding(widget.NewInsetsSimple(2)),
-            ),
-            widget.ListOpts.EntryColor(&widget.ListEntryColor{
-                Selected: color.NRGBA{R: 255, G: 255, B: 0, A: 255},
-                Unselected: color.White,
-                FocusedBackground: color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255},
-                // SelectedBackground: color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255},
-                SelectedFocusedBackground: color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255},
-                SelectingFocusedBackground: color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255},
-            }),
-            widget.ListOpts.EntryLabelFunc(func (e interface{}) string {
-                return e.(string)
-            }),
-            widget.ListOpts.EntryTextPadding(widget.NewInsetsSimple(2)),
-            widget.ListOpts.EntryTextPosition(widget.TextPositionStart, widget.TextPositionCenter),
-            widget.ListOpts.EntrySelectedHandler(func (args *widget.ListEntrySelectedEventArgs) {
-                entry := args.Entry.(string)
-                log.Printf("Selected entry: %s", entry)
-            }),
-        )
-
-        windowContainer.AddChild(fileList)
-
-        buttonRow := widget.NewContainer(
-            widget.ContainerOpts.Layout(widget.NewRowLayout(
-                widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
-                widget.RowLayoutOpts.Spacing(10),
-                widget.RowLayoutOpts.Padding(widget.Insets{
-                    Left: 40,
-                }),
-            )),
-        )
-
-        buttonImage := &widget.ButtonImage{
-            Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
-            Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
-            Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
-        }
-
-        closeButton := widget.NewButton(
-            widget.ButtonOpts.Image(buttonImage),
-            widget.ButtonOpts.Text("Close", face, &widget.ButtonTextColor{
-                Idle: color.White,
-            }),
-            widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
-                windowActive = false
-                window.Close()
-            }),
-            widget.ButtonOpts.TextPadding(widget.Insets{
-                Left: 50,
-                Top: 5,
-                Bottom: 5,
-                Right: 50,
-            }),
-        )
-
-        loadButton := widget.NewButton(
-            widget.ButtonOpts.Image(buttonImage),
-            widget.ButtonOpts.Text("Load", face, &widget.ButtonTextColor{
-                Idle: color.White,
-            }),
-            widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
-                windowActive = false
-                window.Close()
-
-                selected := fileList.SelectedEntry()
-                if selected != nil {
-                    log.Printf("Do load song: %v", selected)
-                    system.LoadSong(selected.(string))
-                }
-
-            }),
-            widget.ButtonOpts.TextPadding(widget.Insets{
-                Left: 50,
-                Top: 5,
-                Right: 50,
-                Bottom: 5,
-            }),
-        )
-
-        buttonRow.AddChild(loadButton)
-        buttonRow.AddChild(closeButton)
-
-        windowContainer.AddChild(buttonRow)
-
-        window = widget.NewWindow(
-            widget.WindowOpts.Contents(windowContainer),
-            widget.WindowOpts.TitleBar(titleContainer, 25),
-            widget.WindowOpts.MinSize(350, 200),
-            // widget.WindowOpts.MaxSize(400, 700),
-            widget.WindowOpts.Draggable(),
-            widget.WindowOpts.Resizeable(),
-        )
-
-        return window
-    }
-
-    makePauseWindow := func() *widget.Window {
-        paused := widget.NewContainer(
-            widget.ContainerOpts.Layout(widget.NewAnchorLayout()),
-            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 0xa0, G: 0x0, B: 0x0, A: 200})),
-        )
-
-        paused.AddChild(widget.NewText(
-            widget.TextOpts.Text("Paused", face, color.White),
-            widget.TextOpts.WidgetOpts(widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
-                HorizontalPosition: widget.AnchorLayoutPositionCenter,
-                VerticalPosition: widget.AnchorLayoutPositionCenter,
-            })),
-        ))
-
-        window := widget.NewWindow(
-            widget.WindowOpts.Contents(paused),
-        )
-
-        return window
-    }
+    ui.Container = rootContainer
 
     currentRowHighlight := 0
-
-    var pauseWindow *widget.Window
 
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
@@ -597,27 +650,10 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             speedText.Label = fmt.Sprintf("Speed: %d BPM: %d", speed, bpm)
         },
         LoadSong: func() {
-            if !windowActive {
-                log.Printf("Load new song")
-
-                window := makeLoadWindow()
-                window.SetLocation(image.Rect(80, 20, 500, 500))
-
-                ui.AddWindow(window)
-                windowActive = true
-            }
+            showLoadWindow()
         },
         Pause: func() {
-            if !windowActive {
-                pauseWindow = makePauseWindow()
-                pauseWindow.SetLocation(image.Rect(200, 180, 400, 180 + 100))
-                ui.AddWindow(pauseWindow)
-                windowActive = true
-            } else if pauseWindow != nil {
-                pauseWindow.Close()
-                pauseWindow = nil
-                windowActive = false
-            }
+            doPause()
         },
     }
 
