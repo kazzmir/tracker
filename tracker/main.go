@@ -48,6 +48,14 @@ func (system *System) LoadSong(path string) {
     system.engine.LoadSongFromFilesystem(data.Data, "data/" + path)
 }
 
+func (system *System) GetGlobalVolume() int {
+    return int(system.engine.volume * 100)
+}
+
+func (system *System) SetGlobalVolume(volume int) {
+    system.engine.SetVolume(float64(volume) / 100.0)
+}
+
 func (system *System) GetFiles() []string {
     return data.ListFiles()
 }
@@ -63,6 +71,8 @@ type Engine struct {
     UI *ebitenui.UI
     UIHooks UIHooks
 
+    volume float64
+
     Players []*audio.Player
     Start sync.Once
     updates uint64
@@ -71,26 +81,11 @@ type Engine struct {
 
 func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, error) {
     engine := &Engine{
-        Player: player,
         AudioContext: audioContext,
+        volume: 0.6,
     }
 
-    engine.UI, engine.UIHooks = makeUI(player, &System{engine: engine})
-
-    player.SetOnChangeRow(engine.UIHooks.UpdateRow)
-    player.SetOnChangeOrder(engine.UIHooks.UpdateOrder)
-    player.SetOnChangeSpeed(engine.UIHooks.UpdateSpeed)
-
-    for _, channel := range player.GetChannelReaders() {
-        playChannel, err := audioContext.NewPlayerF32(channel)
-        if err != nil {
-            return nil, err
-        }
-        playChannel.SetBufferSize(time.Second / 20)
-        playChannel.SetVolume(0.6)
-        engine.Players = append(engine.Players, playChannel)
-        // playChannel.Play()
-    }
+    engine.Initialize(player)
 
     return engine, nil
 }
@@ -103,8 +98,14 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
         }
         defer file.Close()
 
+        // FIXME: use a custom seekable buffering object that only loads sections
+        // of the file into memory as needed so that we abort loading a file if it
+        // is not an s3m
         var buffer bytes.Buffer
-        io.Copy(&buffer, file)
+        _, err = io.Copy(&buffer, file)
+        if err != nil {
+            return nil, err
+        }
 
         loaded, err := s3m.Load(bytes.NewReader(buffer.Bytes()))
         if err != nil {
@@ -140,6 +141,10 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
         return
     }
 
+    engine.Initialize(player)
+}
+
+func (engine *Engine) Initialize(player TrackerPlayer) {
     engine.UI, engine.UIHooks = makeUI(player, &System{engine: engine})
 
     player.SetOnChangeRow(engine.UIHooks.UpdateRow)
@@ -160,13 +165,21 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
             continue
         }
         playChannel.SetBufferSize(time.Second / 20)
-        playChannel.SetVolume(0.6)
+        playChannel.SetVolume(engine.volume)
         engine.Players = append(engine.Players, playChannel)
         // playChannel.Play()
     }
 
     engine.Start = sync.Once{}
     engine.Player = player
+
+}
+
+func (engine *Engine) SetVolume(volume float64) {
+    engine.volume = volume
+    for _, player := range engine.Players {
+        player.SetVolume(volume)
+    }
 }
 
 func (engine *Engine) LoadDroppedFiles() {

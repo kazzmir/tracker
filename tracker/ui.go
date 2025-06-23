@@ -89,6 +89,8 @@ type SystemInterface interface {
     GetFiles() []string
     DoPause()
     LoadSong(name string)
+    GetGlobalVolume() int
+    SetGlobalVolume(int)
 }
 
 func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
@@ -314,19 +316,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             widget.RowLayoutOpts.Direction(widget.DirectionVertical),
             widget.RowLayoutOpts.Spacing(1),
         )),
-        /*
-        widget.ContainerOpts.WidgetOpts(
-            widget.WidgetOpts.LayoutData(widget.RowLayoutData{
-                // Stretch: true,
-            }),
-        ),
-        */
         widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255})),
-        /*
-        widget.ContainerOpts.WidgetOpts(
-            widget.WidgetOpts.MinSize(800, 100),
-        ),
-        */
     )
 
     infoContainer.AddChild(widget.NewText(
@@ -353,10 +343,55 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     topContainer.AddChild(infoContainer)
 
-    emptyContainer := widget.NewContainer(
+    controlsContainer := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+            widget.RowLayoutOpts.Spacing(2),
+        )),
+        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255})),
     )
 
-    topContainer.AddChild(emptyContainer)
+    volumeLabel := widget.NewText(
+        widget.TextOpts.Text(fmt.Sprintf("Volume %v", system.GetGlobalVolume()), face, color.White),
+    )
+
+    controlsContainer.AddChild(volumeLabel)
+
+    volumeSlider := widget.NewSlider(
+        widget.SliderOpts.Direction(widget.DirectionHorizontal),
+        widget.SliderOpts.MinMax(0, 100),
+        widget.SliderOpts.WidgetOpts(
+            widget.WidgetOpts.LayoutData(widget.RowLayoutData{
+                Stretch: true,
+            }),
+            widget.WidgetOpts.MinSize(150, 20),
+        ),
+        widget.SliderOpts.InitialCurrent(system.GetGlobalVolume()),
+        widget.SliderOpts.Images(
+            &widget.SliderTrackImage{
+                Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
+                Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
+            },
+            &widget.ButtonImage{
+                Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x70, G: 0x28, B: 0x0f, A: 255}),
+                Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x92, G: 0x34, B: 0x14, A: 255}),
+                Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0xc8, G: 0x47, B: 0x1b, A: 255}),
+            },
+        ),
+        widget.SliderOpts.FixedHandleSize(10),
+        widget.SliderOpts.TrackOffset(0),
+        widget.SliderOpts.PageSizeFunc(func() int {
+            return 10
+        }),
+        widget.SliderOpts.ChangedHandler(func (args *widget.SliderChangedEventArgs) {
+            volumeLabel.Label = fmt.Sprintf("Volume %v", system.GetGlobalVolume())
+            system.SetGlobalVolume(args.Current)
+        }),
+    )
+
+    controlsContainer.AddChild(volumeSlider)
+
+    topContainer.AddChild(controlsContainer)
 
     showLoadWindow := func() {
         if !windowActive {
@@ -375,6 +410,11 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             widget.RowLayoutOpts.Direction(widget.DirectionVertical),
             widget.RowLayoutOpts.Spacing(1),
         )),
+        widget.ContainerOpts.WidgetOpts(
+            widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
+                HorizontalPosition: widget.AnchorLayoutPositionEnd,
+            }),
+        ),
         widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255})),
     )
     moreInfoContainer.AddChild(widget.NewButton(
@@ -407,10 +447,19 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             Right: 10,
         }),
     ))
+
     moreInfoContainer.AddChild(widget.NewText(
         widget.TextOpts.Text("Tracker by Jon Rafkind", face, color.White),
     ))
-    topContainer.AddChild(moreInfoContainer)
+
+    moreInfoAnchor := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewAnchorLayout()),
+        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255})),
+    )
+
+    moreInfoAnchor.AddChild(moreInfoContainer)
+
+    topContainer.AddChild(moreInfoAnchor)
 
     channels := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
