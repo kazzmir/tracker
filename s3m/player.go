@@ -250,7 +250,8 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
             if !changeRow {
                 channel.CurrentPeriod -= int(channel.PortamentoNote) * ticks * 4
                 if channel.CurrentPeriod < 56 {
-                    channel.CurrentPeriod = 56
+                    channel.CurrentSample = -1
+                    // channel.CurrentPeriod = 56
                 }
             }
         case EffectRetriggerAndVolumeSlide:
@@ -443,7 +444,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         GlobalVolume: file.GlobalVolume,
     }
 
-    // player.BPM = 40
+    // player.BPM = 30
 
     for channelNum, index := range file.ChannelMap {
         channels[index] = &Channel{
@@ -462,10 +463,12 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         }
     }
 
-    player.Channels = channels[6:7]
+    player.Channels = channels[:]
 
+    /*
     player.S3M.Orders = []byte{6}
     player.S3M.SongLength = 1
+    */
 
     // player.S3M.SongLength = 1
 
@@ -592,12 +595,20 @@ func (player *Player) NextOrder() {
     if player.CurrentOrder >= player.S3M.SongLength {
         player.CurrentOrder = 0
     }
+
+    if player.OnChangeOrder != nil {
+        player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
+    }
 }
 
 func (player *Player) PreviousOrder() {
     player.CurrentOrder -= 1
     if player.CurrentOrder < 0 {
         player.CurrentOrder = player.S3M.SongLength - 1
+    }
+
+    if player.OnChangeOrder != nil {
+        player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
     }
 }
 

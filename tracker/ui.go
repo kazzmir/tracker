@@ -320,7 +320,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     )
 
     infoContainer.AddChild(widget.NewText(
-        widget.TextOpts.Text(fmt.Sprintf("Mod name: %s", player.GetName()), face, color.White),
+        widget.TextOpts.Text(fmt.Sprintf("Song name: %s", player.GetName()), face, color.White),
     ))
 
     orderText := widget.NewText(
