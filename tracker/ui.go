@@ -410,6 +410,11 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             widget.RowLayoutOpts.Direction(widget.DirectionVertical),
             widget.RowLayoutOpts.Spacing(1),
         )),
+        widget.ContainerOpts.WidgetOpts(
+            widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
+                HorizontalPosition: widget.AnchorLayoutPositionEnd,
+            }),
+        ),
         widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255})),
     )
     moreInfoContainer.AddChild(widget.NewButton(
@@ -442,10 +447,19 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             Right: 10,
         }),
     ))
+
     moreInfoContainer.AddChild(widget.NewText(
         widget.TextOpts.Text("Tracker by Jon Rafkind", face, color.White),
     ))
-    topContainer.AddChild(moreInfoContainer)
+
+    moreInfoAnchor := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewAnchorLayout()),
+        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255})),
+    )
+
+    moreInfoAnchor.AddChild(moreInfoContainer)
+
+    topContainer.AddChild(moreInfoAnchor)
 
     channels := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
