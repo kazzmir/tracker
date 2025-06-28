@@ -48,6 +48,24 @@ func (vibrato *Vibrato) Apply(frequency int) int {
     return frequency + vibratoValue
 }
 
+type Tremolo struct {
+    Speed int
+    Depth int
+    position int
+}
+
+func (tremolo *Tremolo) Update() {
+    tremolo.position += tremolo.Speed
+    if tremolo.position >= 64 {
+        tremolo.position -= 64
+    }
+}
+
+func (tremolo *Tremolo) Apply(volume float32) float32 {
+    volumeValue := float64(tremolo.Depth) / 16 * math.Sin(float64(tremolo.position) * math.Pi * 360 / 64 / 180)
+    return volume + float32(volumeValue)
+}
+
 type Channel struct {
     Player *Player
     AudioBuffer *common.AudioBuffer
@@ -62,6 +80,8 @@ type Channel struct {
     CurrentEffect int
     EffectParameter int
     Vibrato Vibrato
+
+    Tremolo Tremolo
 
     // replay the note every n ticks
     Retrigger int
@@ -119,6 +139,9 @@ func (channel *Channel) UpdateRow() {
             }
         case EffectSetTempo:
             channel.Player.BPM = channel.EffectParameter
+            if channel.Player.BPM < 32 {
+                channel.Player.BPM = 32
+            }
         case EffectPortamentoToNote:
             channel.CurrentEffect = EffectPortamentoToNote
             if note.EffectParameter > 0 {
@@ -165,6 +188,11 @@ func (channel *Channel) UpdateRow() {
             }
 
             channel.CurrentEffect = EffectVibratoAndVolumeSlide
+        case EffectTremolo:
+            if note.EffectParameter > 0 {
+                channel.Tremolo.Speed = int(note.EffectParameter >> 4)
+                channel.Tremolo.Depth = int(note.EffectParameter & 0xf)
+            }
         case EffectGlobalVolume:
             channel.Player.GlobalVolume = uint8(channel.EffectParameter & 0x3f)
             log.Printf("Set global volume to %v", channel.Player.GlobalVolume)
@@ -238,6 +266,8 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
             channel.Vibrato.Update()
         case EffectVibrato:
             channel.Vibrato.Update()
+        case EffectTremolo:
+            channel.Tremolo.Update()
         case EffectPortamentoToNote:
             if !changeRow {
                 channel.doPortamentoToNote(ticks)
@@ -344,7 +374,13 @@ func (channel *Channel) Update(rate float32) {
 
                     // noteVolume = 1
 
-                    channel.AudioBuffer.UnsafeWrite(instrument.Data[position] * channel.Volume * noteVolume * float32(channel.Player.GlobalVolume) / 64)
+                    sample := instrument.Data[position] * channel.Volume * noteVolume * float32(channel.Player.GlobalVolume) / 64
+                    if channel.CurrentEffect == EffectTremolo {
+                        // log.Printf("tremolo %v -> %v", sample, channel.Tremolo.Apply(sample))
+                        sample = channel.Tremolo.Apply(sample)
+                    }
+
+                    channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample)))
                     channel.startPosition += incrementRate
                     samplesWritten += 1
                 }
