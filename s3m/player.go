@@ -216,7 +216,7 @@ func (channel *Channel) UpdateRow() {
                 case 0x8:
                     channel.Pan = channel.EffectParameter & 0xf
                 case 0xa:
-                    log.Printf("Set pan to %v", channel.EffectParameter & 0xf)
+                    // legacy pan, SAx but some songs use it
                     pan := channel.EffectParameter & 0xf
                     if pan >= 8 {
                         pan -= 8
@@ -739,13 +739,8 @@ func (player *Player) RenderToPCM() io.Reader {
                 // copy the samples into the mix buffer
                 normalizer := float32(len(player.Channels))
                 for i := range amount {
+                    // FIXME: this normalizer is too high, the output is too quiet
                     mix[i] = mix[i] + buffer[i] / normalizer
-                    /*
-                    // mono to stereo
-                    mixed := mix[i*2+0] + buffer[i] / normalizer
-                    mix[i*2+0] = mixed
-                    mix[i*2+1] = mixed
-                    */
                 }
             }
         }
