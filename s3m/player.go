@@ -196,6 +196,15 @@ func (channel *Channel) UpdateRow() {
         case EffectGlobalVolume:
             channel.Player.GlobalVolume = uint8(channel.EffectParameter & 0x3f)
             log.Printf("Set global volume to %v", channel.Player.GlobalVolume)
+        case EffectSetExtra:
+            kind := channel.EffectParameter >> 4
+            switch kind {
+                case 0xa:
+                    log.Printf("Set pan to %v", channel.EffectParameter & 0xf)
+                    // set pan
+                default:
+                    log.Printf("Unknown extra effect %v with parameter %v", kind, channel.EffectParameter)
+            }
         case EffectVolumeSlide:
             channel.CurrentEffect = EffectVolumeSlide
 
