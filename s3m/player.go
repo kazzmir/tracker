@@ -522,11 +522,16 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
     // player.BPM = 30
 
     for channelNum, index := range file.ChannelMap {
+        pan, ok := file.ChannelPanning[channelNum]
+        if !ok {
+            pan = 8
+        }
+
         channels[index] = &Channel{
             Channel: channelNum,
             Player: player,
             AudioBuffer: common.MakeAudioBuffer(sampleRate),
-            Pan: 8,
+            Pan: int(pan),
             Volume: 1.0,
             buffer: make([]float32, sampleRate),
             currentRow: -1,

@@ -106,6 +106,7 @@ type S3MFile struct {
     InitialSpeed uint8
     InitialTempo uint8
     ChannelMap map[int]int // maps channel number to channel index
+    ChannelPanning map[int]byte
     GlobalVolume uint8
 }
 
@@ -250,6 +251,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
     }
 
     channelMap := make(map[int]int)
+    channelPanning := make(map[int]byte)
 
     channelCount := 0
     for i, setting := range channelSettings {
@@ -261,11 +263,15 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
 
             log.Printf("Channel %v default panning %v", i, setting)
 
+            channelPanning[i] = setting
+
+            /*
             if setting <= 7 {
                 // pan left
             } else {
                 // pan right
             }
+            */
         }
     }
 
@@ -307,7 +313,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
         }
 
         instrumentOffsets = append(instrumentOffsets, offset)
-        log.Printf("Instrument %v offset 0x%x", len(instrumentOffsets)-1, offset << 4)
+        // log.Printf("Instrument %v offset 0x%x", len(instrumentOffsets)-1, offset << 4)
     }
 
     var patternOffsets []uint16
@@ -319,7 +325,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
         }
 
         patternOffsets = append(patternOffsets, offset)
-        log.Printf("Pattern %v offset 0x%x", len(patternOffsets)-1, offset << 4)
+        // log.Printf("Pattern %v offset 0x%x", len(patternOffsets)-1, offset << 4)
     }
 
     if defaultPanning == 0xfc {
@@ -344,7 +350,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
 
     var instruments []Instrument
 
-    for i, offset := range instrumentOffsets {
+    for _, offset := range instrumentOffsets {
         _, err := reader_.Seek(int64(offset << 4), io.SeekStart)
         if err != nil {
             return nil, err
@@ -494,7 +500,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
                 Data: floatData,
             })
 
-            log.Printf("Instrument %v loop begin %v end %v", i, loopBegin, loopEnd)
+            // log.Printf("Instrument %v loop begin %v end %v", i, loopBegin, loopEnd)
         } else {
             instruments = append(instruments, Instrument{
             })
@@ -634,6 +640,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
         Patterns: patterns,
         Orders: orders,
         ChannelMap: channelMap,
+        ChannelPanning: channelPanning,
         SongLength: len(orders),
         InitialSpeed: initialSpeed,
         InitialTempo: initialTempo,
