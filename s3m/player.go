@@ -74,6 +74,8 @@ type Channel struct {
     buffer []float32 // used for reading audio data
     Mute bool
 
+    Pan int // 0-15, 8 is center, 0 is left, 15 is right
+
     CurrentPeriod int
     CurrentSample int
     CurrentVolume int
@@ -92,6 +94,18 @@ type Channel struct {
 
     currentRow int
     startPosition float32
+}
+
+func (channel *Channel) GetLeftPan() float32 {
+    // 0 is full pan left, so return 1.0
+    // 8 is center, so return 0.5
+    // 0xf is full pan right, so return 0.0
+
+    return float32(0xf - channel.Pan) / 15
+}
+
+func (channel *Channel) GetRightPan() float32 {
+    return float32(channel.Pan) / 15
 }
 
 func (channel *Channel) UpdateRow() {
@@ -199,9 +213,18 @@ func (channel *Channel) UpdateRow() {
         case EffectSetExtra:
             kind := channel.EffectParameter >> 4
             switch kind {
+                case 0x8:
+                    channel.Pan = channel.EffectParameter & 0xf
                 case 0xa:
                     log.Printf("Set pan to %v", channel.EffectParameter & 0xf)
-                    // set pan
+                    pan := channel.EffectParameter & 0xf
+                    if pan >= 8 {
+                        pan -= 8
+                    } else {
+                        pan += 8
+                    }
+
+                    channel.Pan = pan
                 default:
                     log.Printf("Unknown extra effect %v with parameter %v", kind, channel.EffectParameter)
             }
@@ -359,6 +382,10 @@ func (channel *Channel) Update(rate float32) {
             incrementRate := frequency / float32(channel.Player.SampleRate)
 
             noteVolume := float32(channel.CurrentVolume) / 64
+
+            leftPan := channel.GetLeftPan()
+            rightPan := channel.GetRightPan()
+
             // log.Printf("note volume %v", noteVolume)
 
             // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
@@ -389,7 +416,8 @@ func (channel *Channel) Update(rate float32) {
                         sample = channel.Tremolo.Apply(sample)
                     }
 
-                    channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample)))
+                    channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample * leftPan)))
+                    channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample * rightPan)))
                     channel.startPosition += incrementRate
                     samplesWritten += 1
                 }
@@ -414,7 +442,7 @@ func (channel *Channel) Read(data []byte) (int, error) {
         return len(data), nil
     }
 
-    samples := len(data) / 4 / 2
+    samples := len(data) / 4
 
     // sampleFrequency := 22050 / 2
     // samples = (samples * sampleFrequency) / channel.Engine.SampleRate
@@ -431,20 +459,22 @@ func (channel *Channel) Read(data []byte) (int, error) {
     for sampleIndex := range floatSamples {
         value := part[sampleIndex]
         bits := math.Float32bits(value)
-        data[i*8+0] = byte(bits)
-        data[i*8+1] = byte(bits >> 8)
-        data[i*8+2] = byte(bits >> 16)
-        data[i*8+3] = byte(bits >> 24)
+        data[i*4+0] = byte(bits)
+        data[i*4+1] = byte(bits >> 8)
+        data[i*4+2] = byte(bits >> 16)
+        data[i*4+3] = byte(bits >> 24)
 
+        /*
         data[i*8+4] = byte(bits)
         data[i*8+5] = byte(bits >> 8)
         data[i*8+6] = byte(bits >> 16)
         data[i*8+7] = byte(bits >> 24)
+        */
 
         i += 1
     }
 
-    i *= 8
+    i *= 4
 
     // in a browser we have to return something, so we generate some silence
     if i == 0 && runtime.GOOS == "js" {
@@ -455,7 +485,7 @@ func (channel *Channel) Read(data []byte) (int, error) {
         return 8, nil
     } else {
         // on a normal os we can just return 0 if necessary
-        return floatSamples * 8, nil
+        return floatSamples * 4, nil
     }
 }
 
@@ -496,6 +526,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
             Channel: channelNum,
             Player: player,
             AudioBuffer: common.MakeAudioBuffer(sampleRate),
+            Pan: 8,
             Volume: 1.0,
             buffer: make([]float32, sampleRate),
             currentRow: -1,
