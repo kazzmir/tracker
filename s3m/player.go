@@ -716,7 +716,7 @@ func (player *Player) RenderToPCM() io.Reader {
     // make a buffer to hold 1/100th of a second of audio data, which is 4-bytes per sample
     // and 1 samples per channel
     rate := 100
-    buffer := make([]float32, player.SampleRate / rate)
+    buffer := make([]float32, player.SampleRate * 2 / rate)
     mix := make([]float32, player.SampleRate * 2 / rate)
 
     fillMix := func() bool {
@@ -739,10 +739,13 @@ func (player *Player) RenderToPCM() io.Reader {
                 // copy the samples into the mix buffer
                 normalizer := float32(len(player.Channels))
                 for i := range amount {
+                    mix[i] = mix[i] + buffer[i] / normalizer
+                    /*
                     // mono to stereo
                     mixed := mix[i*2+0] + buffer[i] / normalizer
                     mix[i*2+0] = mixed
                     mix[i*2+1] = mixed
+                    */
                 }
             }
         }
