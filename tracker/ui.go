@@ -31,6 +31,7 @@ type UIHooks struct {
     LoadSong func()
     Pause func()
     RenderScopes func()
+    ToggleOscilloscopes func()
 }
 func loadFont(size float64) (text.Face, error) {
     source, err := text.NewGoTextFaceSource(bytes.NewReader(FuturaTTF))
@@ -471,6 +472,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             Right: 10,
         }),
     ))
+
     moreInfoContainer.AddChild(widget.NewButton(
         widget.ButtonOpts.Image(buttonImage),
         widget.ButtonOpts.Text("(P)ause/Unpause", face, &widget.ButtonTextColor{
@@ -487,6 +489,70 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         }),
     ))
 
+    oscilloscopes := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+            widget.RowLayoutOpts.Spacing(8),
+        )),
+    )
+
+    var updateScopes func()
+
+    setupOscilloscopes := func() {
+        var scopes []*ebiten.Image
+
+        scopeSize := 100
+        for range player.GetChannelCount() {
+
+            scope := ebiten.NewImage(scopeSize, 50)
+            scope.Fill(color.RGBA{R: 0, G: 0, B: 0, A: 255})
+            oscilloscopes.AddChild(widget.NewGraphic(
+                widget.GraphicOpts.Image(scope),
+            ))
+
+            scopes = append(scopes, scope)
+        }
+
+        scopeData := make([]float32, scopeSize * 2)
+        updateScopes = func() {
+            for n := range player.GetChannelCount() {
+                data := player.GetChannelData(n, scopeData)
+                renderScope(scopes[n], scopeData[0:data], player.IsStereo())
+            }
+        }
+    }
+
+    showOscilloscopes := true
+    toggleOscilloscopes := func() {
+        showOscilloscopes = !showOscilloscopes
+        if showOscilloscopes {
+            setupOscilloscopes()
+        } else {
+            oscilloscopes.RemoveChildren()
+            updateScopes = func() {
+            }
+        }
+    }
+
+    setupOscilloscopes()
+
+    moreInfoContainer.AddChild(widget.NewButton(
+        widget.ButtonOpts.Image(buttonImage),
+        widget.ButtonOpts.Text("(T)oggle oscilloscopes", face, &widget.ButtonTextColor{
+            Idle: color.White,
+        }),
+        widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
+            toggleOscilloscopes()
+        }),
+        widget.ButtonOpts.TextPadding(widget.Insets{
+            Left: 10,
+            Top: 5,
+            Bottom: 5,
+            Right: 10,
+        }),
+    ))
+
+
     moreInfoContainer.AddChild(widget.NewText(
         widget.TextOpts.Text("Tracker by Jon Rafkind", face, color.White),
     ))
@@ -499,35 +565,6 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     moreInfoAnchor.AddChild(moreInfoContainer)
 
     topContainer.AddChild(moreInfoAnchor)
-
-    oscilloscopes := widget.NewContainer(
-        widget.ContainerOpts.Layout(widget.NewRowLayout(
-            widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
-            widget.RowLayoutOpts.Spacing(8),
-        )),
-    )
-
-    var scopes []*ebiten.Image
-
-    scopeSize := 100
-    for range player.GetChannelCount() {
-
-        scope := ebiten.NewImage(scopeSize, 50)
-        scope.Fill(color.RGBA{R: 0, G: 0, B: 0, A: 255})
-        oscilloscopes.AddChild(widget.NewGraphic(
-            widget.GraphicOpts.Image(scope),
-        ))
-
-        scopes = append(scopes, scope)
-    }
-
-    scopeData := make([]float32, scopeSize * 2)
-    updateScopes := func() {
-        for n := range player.GetChannelCount() {
-            data := player.GetChannelData(n, scopeData)
-            renderScope(scopes[n], scopeData[0:data], player.IsStereo())
-        }
-    }
 
     rootContainer.AddChild(oscilloscopes)
 
@@ -773,6 +810,9 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         },
         Pause: func() {
             doPause()
+        },
+        ToggleOscilloscopes: func() {
+            toggleOscilloscopes()
         },
         RenderScopes: func() {
             updateScopes()

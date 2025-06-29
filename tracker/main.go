@@ -244,6 +244,10 @@ func (engine *Engine) Update() error {
                 if engine.UIHooks.Pause != nil {
                     engine.UIHooks.Pause()
                 }
+            case ebiten.KeyT:
+                if engine.UIHooks.ToggleOscilloscopes != nil {
+                    engine.UIHooks.ToggleOscilloscopes()
+                }
         }
     }
 
