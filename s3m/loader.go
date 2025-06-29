@@ -30,6 +30,9 @@ const (
     EffectSetTempo = 20
     EffectFineVibrato = 21
     EffectGlobalVolume = 22
+
+    // not a defined effect in the s3m standard, but we use it for the extra delayed note effect
+    EffectNoteDelay = 5000
 )
 
 type Instrument struct {

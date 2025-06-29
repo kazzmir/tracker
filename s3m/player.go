@@ -83,6 +83,8 @@ type Channel struct {
     CurrentEffect int
     EffectParameter int
     Vibrato Vibrato
+    NoteDelay int
+    UpdateDelay func()
 
     Tremolo Tremolo
 
@@ -120,10 +122,13 @@ func (channel *Channel) UpdateRow() {
     channel.EffectParameter = 0
 
     newPeriod := channel.CurrentPeriod
+    newVolume := channel.CurrentVolume
+    newSample := channel.CurrentSample
+    newStartPosition := channel.startPosition
 
     // channel.CurrentVolume = 64
     if note.ChangeVolume {
-        channel.CurrentVolume = note.Volume
+        newVolume = note.Volume
     }
 
     if note.ChangeEffect {
@@ -134,15 +139,15 @@ func (channel *Channel) UpdateRow() {
     if note.ChangeNote {
         if note.Note == 255 || note.Note == 254 {
             log.Printf("channel %v note %v", channel.Channel, note.Note)
-            channel.CurrentSample = -1
+            newSample = -1
         } else {
             newPeriod = Octaves[note.Note]
-            channel.startPosition = 0.0
+            newStartPosition = 0.0
         }
     }
 
     if note.ChangeSample {
-        channel.CurrentSample = note.SampleNumber - 1
+        newSample = note.SampleNumber - 1
     }
 
     switch channel.CurrentEffect {
@@ -231,6 +236,27 @@ func (channel *Channel) UpdateRow() {
                     }
 
                     channel.Pan = pan
+                case 0xd:
+                    // note delay
+
+                    channel.CurrentEffect = EffectNoteDelay
+                    channel.NoteDelay = channel.EffectParameter & 0xf
+                    delayVolume := newVolume
+                    delayPeriod := newPeriod
+                    delaySample := newSample
+                    delayStartPosition := 0.0
+                    channel.UpdateDelay = func() {
+                        channel.CurrentVolume = delayVolume
+                        channel.CurrentPeriod = delayPeriod
+                        channel.CurrentSample = delaySample
+                        channel.startPosition = float32(delayStartPosition)
+                    }
+
+                    newVolume = channel.CurrentVolume
+                    newPeriod = channel.CurrentPeriod
+                    newSample = channel.CurrentSample
+                    newStartPosition = channel.startPosition
+
                 default:
                     log.Printf("Unknown extra effect %v with parameter %v", kind, channel.EffectParameter)
             }
@@ -244,7 +270,10 @@ func (channel *Channel) UpdateRow() {
             log.Printf("Channel %v unknown effect %v with parameter %v", channel.Channel, channel.CurrentEffect, channel.EffectParameter)
     }
 
+    channel.CurrentVolume = newVolume
     channel.CurrentPeriod = newPeriod
+    channel.CurrentSample = newSample
+    channel.startPosition = newStartPosition
 }
 
 func (channel *Channel) doVolumeSlide(changeRow bool) {
@@ -304,6 +333,13 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
             channel.Vibrato.Update()
         case EffectVibrato:
             channel.Vibrato.Update()
+        case EffectNoteDelay:
+            channel.NoteDelay -= ticks
+            // log.Printf("channel %v note delay %v", channel.Channel, channel.NoteDelay)
+            if channel.NoteDelay <= 0 {
+                channel.UpdateDelay()
+                channel.CurrentEffect = EffectNone
+            }
         case EffectTremolo:
             channel.Tremolo.Update()
         case EffectPortamentoAndVolumeSlide:
@@ -540,7 +576,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         GlobalVolume: file.GlobalVolume,
     }
 
-    // player.BPM = 60
+    // player.BPM = 80
 
     for channelNum, index := range file.ChannelMap {
         pan, ok := file.ChannelPanning[channelNum]
@@ -569,7 +605,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
     player.Channels = channels[:]
 
     /*
-    player.S3M.Orders = []byte{13}
+    player.S3M.Orders = []byte{22}
     player.S3M.SongLength = 1
     */
 
