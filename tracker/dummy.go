@@ -37,6 +37,10 @@ func (player *DummyPlayer) GetSongLength() int {
     return 0
 }
 
+func (player *DummyPlayer) GetChannelData(channel int, data []float32) int {
+    return 0
+}
+
 func (player *DummyPlayer) NextOrder() {
 }
 

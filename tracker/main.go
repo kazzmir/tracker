@@ -60,6 +60,10 @@ func (system *System) GetFiles() []string {
     return data.ListFiles()
 }
 
+func (system *System) GetSampleRate() int {
+    return system.engine.AudioContext.SampleRate()
+}
+
 func (system *System) DoPause() {
     system.engine.DoPause()
 }
@@ -262,6 +266,10 @@ func (engine *Engine) Update() error {
 }
 
 func (engine *Engine) Draw(screen *ebiten.Image) {
+    if engine.UIHooks.RenderScopes != nil {
+        engine.UIHooks.RenderScopes()
+    }
+
     engine.UI.Draw(screen)
 }
 

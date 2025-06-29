@@ -726,6 +726,10 @@ func (player *Player) GetCurrentOrder() int {
     return player.CurrentOrder
 }
 
+func (player *Player) GetChannelData(channel int, data []float32) int {
+    return 0
+}
+
 func (player *Player) Update(timeDelta float32) {
     oldRow := player.CurrentRow
     oldTicks := int(player.ticks)

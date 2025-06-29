@@ -30,6 +30,7 @@ type UIHooks struct {
     UpdateSpeed func(int, int)
     LoadSong func()
     Pause func()
+    RenderScopes func()
 }
 func loadFont(size float64) (text.Face, error) {
     source, err := text.NewGoTextFaceSource(bytes.NewReader(FuturaTTF))
@@ -83,14 +84,46 @@ type UIPlayer interface {
     GetBPM() int
     GetChannelCount() int
     GetRowNoteInfo(channel int, row int) common.NoteInfo
+    GetChannelData(channel int, data []float32) int
 }
 
 type SystemInterface interface {
     GetFiles() []string
     DoPause()
+    GetSampleRate() int
     LoadSong(name string)
     GetGlobalVolume() int
     SetGlobalVolume(int)
+}
+
+// data is an array of float32 sample values representing the audio waveform, in stereo
+func renderScope(img *ebiten.Image, data []float32) {
+    if len(data) == 0 {
+        return
+    }
+
+    img.Fill(color.Black)
+    x := 0
+
+    position := 0
+    last_x := 0
+    last_y := img.Bounds().Dy() / 2 + int(data[position] * float32(img.Bounds().Dy() / 2))
+
+    x += 1
+    position += 2
+
+    for x < img.Bounds().Dx() && position < len(data) {
+        sample := data[position]
+
+        new_y := img.Bounds().Dy() / 2 + int(sample * float32(img.Bounds().Dy() / 2))
+
+        vector.StrokeLine(img, float32(last_x), float32(last_y), float32(x), float32(new_y), 1, color.White, true)
+        last_x = x
+        last_y = new_y
+
+        x += 1
+        position += 2 // for stereo
+    }
 }
 
 func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
@@ -468,11 +501,26 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         )),
     )
 
-    scope1 := ebiten.NewImage(100, 50)
-    scope1.Fill(color.RGBA{R: 0, G: 0, B: 0, A: 255})
-    oscilloscopes.AddChild(widget.NewGraphic(
-        widget.GraphicOpts.Image(scope1),
-    ))
+    var scopes []*ebiten.Image
+
+    for range player.GetChannelCount() {
+
+        scope := ebiten.NewImage(100, 50)
+        scope.Fill(color.RGBA{R: 0, G: 0, B: 0, A: 255})
+        oscilloscopes.AddChild(widget.NewGraphic(
+            widget.GraphicOpts.Image(scope),
+        ))
+
+        scopes = append(scopes, scope)
+    }
+
+    scopeData := make([]float32, system.GetSampleRate() * 2)
+    updateScopes := func() {
+        for n := range player.GetChannelCount() {
+            data := player.GetChannelData(n, scopeData)
+            renderScope(scopes[n], scopeData[0:data])
+        }
+    }
 
     rootContainer.AddChild(oscilloscopes)
 
@@ -718,6 +766,9 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         },
         Pause: func() {
             doPause()
+        },
+        RenderScopes: func() {
+            updateScopes()
         },
     }
 
