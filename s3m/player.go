@@ -540,7 +540,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         GlobalVolume: file.GlobalVolume,
     }
 
-    // player.BPM = 30
+    // player.BPM = 60
 
     for channelNum, index := range file.ChannelMap {
         pan, ok := file.ChannelPanning[channelNum]
@@ -569,7 +569,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
     player.Channels = channels[:]
 
     /*
-    player.S3M.Orders = []byte{6}
+    player.S3M.Orders = []byte{13}
     player.S3M.SongLength = 1
     */
 
@@ -616,6 +616,12 @@ func (player *Player) Update(timeDelta float32) {
 
     player.ticks += timeDelta * float32(player.BPM) * 2 / 5
     newTicks := int(player.ticks)
+
+    /*
+    if newTicks - oldTicks > 1 {
+        log.Printf("Too many ticks! %v", newTicks - oldTicks)
+    }
+    */
 
     if player.ticks >= float32(player.Speed) {
         player.CurrentRow += 1

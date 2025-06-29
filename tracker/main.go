@@ -76,6 +76,7 @@ type Engine struct {
     UIHooks UIHooks
 
     volume float64
+    fps int
 
     Players []*audio.Player
     Start sync.Once
@@ -83,9 +84,10 @@ type Engine struct {
     Paused bool
 }
 
-func MakeEngine(player TrackerPlayer, audioContext *audio.Context) (*Engine, error) {
+func MakeEngine(player TrackerPlayer, audioContext *audio.Context, fps int) (*Engine, error) {
     engine := &Engine{
         AudioContext: audioContext,
+        fps: fps,
         volume: 0.6,
     }
 
@@ -260,7 +262,10 @@ func (engine *Engine) Update() error {
             })
         }
         if !engine.Paused {
-            engine.Player.Update(1.0/30)
+
+            for range 60 / engine.fps {
+                engine.Player.Update(1.0/60)
+            }
         }
     }
 
@@ -419,7 +424,9 @@ func main(){
         }
     } else {
 
-        ebiten.SetTPS(30)
+        fps := 30
+
+        ebiten.SetTPS(fps)
         ebiten.SetWindowSize(1200, 800)
         ebiten.SetWindowTitle("Mod Tracker")
         ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
@@ -433,7 +440,7 @@ func main(){
         modPlayer.Channels[3].Mute = true
         */
 
-        engine, err := MakeEngine(player, audioContext)
+        engine, err := MakeEngine(player, audioContext, fps)
         if err != nil {
             log.Printf("Error creating engine: %v", err)
             return
