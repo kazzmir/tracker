@@ -177,6 +177,11 @@ func (channel *Channel) UpdateRow() {
             channel.CurrentEffect = EffectRetriggerAndVolumeSlide
             channel.VolumeSlide = note.EffectParameter >> 4
             channel.Retrigger = int(note.EffectParameter & 0xf)
+        case EffectPortamentoAndVolumeSlide:
+            channel.CurrentEffect = EffectPortamentoAndVolumeSlide
+            if channel.EffectParameter > 0 {
+                channel.VolumeSlide = note.EffectParameter >> 4
+            }
         case EffectPortamentoDown, EffectPortamentoUp:
             // channel.CurrentEffect = EffectPortamentoDown
 
@@ -301,6 +306,11 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
             channel.Vibrato.Update()
         case EffectTremolo:
             channel.Tremolo.Update()
+        case EffectPortamentoAndVolumeSlide:
+            if !changeRow {
+                channel.doVolumeSlide(changeRow)
+                channel.doPortamentoToNote(ticks)
+            }
         case EffectPortamentoToNote:
             if !changeRow {
                 channel.doPortamentoToNote(ticks)
