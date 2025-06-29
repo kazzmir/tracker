@@ -732,6 +732,10 @@ func (player *Player) GetCurrentOrder() int {
     return player.CurrentOrder
 }
 
+func (player *Player) IsStereo() bool {
+    return false
+}
+
 func (player *Player) GetChannelData(channel int, data []float32) int {
     if channel < 0 || channel >= len(player.Channels) {
         return 0

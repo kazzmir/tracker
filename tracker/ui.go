@@ -85,6 +85,7 @@ type UIPlayer interface {
     GetChannelCount() int
     GetRowNoteInfo(channel int, row int) common.NoteInfo
     GetChannelData(channel int, data []float32) int
+    IsStereo() bool
 }
 
 type SystemInterface interface {
@@ -97,9 +98,14 @@ type SystemInterface interface {
 }
 
 // data is an array of float32 sample values representing the audio waveform, in stereo
-func renderScope(img *ebiten.Image, data []float32) {
+func renderScope(img *ebiten.Image, data []float32, stereo bool) {
     if len(data) == 0 {
         return
+    }
+
+    positionIncrement := 1
+    if stereo {
+        positionIncrement = 2
     }
 
     img.Fill(color.Black)
@@ -110,7 +116,7 @@ func renderScope(img *ebiten.Image, data []float32) {
     last_y := img.Bounds().Dy() / 2 + int(data[position] * float32(img.Bounds().Dy() / 2))
 
     x += 1
-    position += 2
+    position += positionIncrement
 
     for x < img.Bounds().Dx() && position < len(data) {
         sample := data[position]
@@ -122,7 +128,7 @@ func renderScope(img *ebiten.Image, data []float32) {
         last_y = new_y
 
         x += 1
-        position += 2 // for stereo
+        position += positionIncrement
     }
 }
 
@@ -503,9 +509,10 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     var scopes []*ebiten.Image
 
+    scopeSize := 100
     for range player.GetChannelCount() {
 
-        scope := ebiten.NewImage(100, 50)
+        scope := ebiten.NewImage(scopeSize, 50)
         scope.Fill(color.RGBA{R: 0, G: 0, B: 0, A: 255})
         oscilloscopes.AddChild(widget.NewGraphic(
             widget.GraphicOpts.Image(scope),
@@ -514,11 +521,11 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         scopes = append(scopes, scope)
     }
 
-    scopeData := make([]float32, system.GetSampleRate() * 2)
+    scopeData := make([]float32, scopeSize * 2)
     updateScopes := func() {
         for n := range player.GetChannelCount() {
             data := player.GetChannelData(n, scopeData)
-            renderScope(scopes[n], scopeData[0:data])
+            renderScope(scopes[n], scopeData[0:data], player.IsStereo())
         }
     }
 

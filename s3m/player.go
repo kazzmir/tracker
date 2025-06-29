@@ -721,6 +721,10 @@ func (player *Player) GetName() string {
     return player.S3M.Name
 }
 
+func (player *Player) IsStereo() bool {
+    return true
+}
+
 func (player *Player) GetChannelData(channel int, data []float32) int {
     if channel < len(player.Channels) {
         return player.Channels[channel].ScopeBuffer.Peek(data)
