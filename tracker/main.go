@@ -256,7 +256,7 @@ func (engine *Engine) Update() error {
             })
         }
         if !engine.Paused {
-            engine.Player.Update(1.0/60)
+            engine.Player.Update(1.0/30)
         }
     }
 
@@ -415,7 +415,7 @@ func main(){
         }
     } else {
 
-        ebiten.SetTPS(60)
+        ebiten.SetTPS(30)
         ebiten.SetWindowSize(1200, 800)
         ebiten.SetWindowTitle("Mod Tracker")
         ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
