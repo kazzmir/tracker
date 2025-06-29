@@ -461,6 +461,21 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     topContainer.AddChild(moreInfoAnchor)
 
+    oscilloscopes := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+            widget.RowLayoutOpts.Spacing(8),
+        )),
+    )
+
+    scope1 := ebiten.NewImage(100, 50)
+    scope1.Fill(color.RGBA{R: 0, G: 0, B: 0, A: 255})
+    oscilloscopes.AddChild(widget.NewGraphic(
+        widget.GraphicOpts.Image(scope1),
+    ))
+
+    rootContainer.AddChild(oscilloscopes)
+
     channels := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
             widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
