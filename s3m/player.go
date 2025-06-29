@@ -294,7 +294,11 @@ func (channel *Channel) doVolumeSlide(changeRow bool) {
             volumeAmount = slideUp
         }
     } else if slideDown == 0xf {
-        volumeAmount = slideUp
+        if slideUp > 0 {
+            volumeAmount = slideUp
+        } else {
+            volumeAmount = -slideDown
+        }
     } else if slideUp > 0 {
         // FIXME: implement fast volume slides
         // volumeAmount = slideUp * (channel.Player.Speed - 1)
@@ -588,7 +592,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         GlobalVolume: file.GlobalVolume,
     }
 
-    // player.BPM = 80
+    // player.BPM = 30
 
     for channelNum, index := range file.ChannelMap {
         pan, ok := file.ChannelPanning[channelNum]
@@ -617,7 +621,7 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
     player.Channels = channels[:]
 
     /*
-    player.S3M.Orders = []byte{22}
+    player.S3M.Orders = []byte{34}
     player.S3M.SongLength = 1
     */
 
