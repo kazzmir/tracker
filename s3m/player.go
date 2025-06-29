@@ -69,6 +69,7 @@ func (tremolo *Tremolo) Apply(volume float32) float32 {
 type Channel struct {
     Player *Player
     AudioBuffer *common.AudioBuffer
+    ScopeBuffer *common.AudioBuffer
     Channel int
     Volume float32
     buffer []float32 // used for reading audio data
@@ -358,6 +359,7 @@ func (channel *Channel) Update(rate float32) {
     samplesWritten := 0
 
     channel.AudioBuffer.Lock()
+    channel.ScopeBuffer.Lock()
 
     // if channel.CurrentNote != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
     if channel.CurrentSample >= 0 && channel.CurrentPeriod > 0 {
@@ -418,6 +420,10 @@ func (channel *Channel) Update(rate float32) {
 
                     channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample * leftPan)))
                     channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample * rightPan)))
+
+                    channel.ScopeBuffer.UnsafeWrite(max(-1, min(1, sample * leftPan)))
+                    channel.ScopeBuffer.UnsafeWrite(max(-1, min(1, sample * rightPan)))
+
                     channel.startPosition += incrementRate
                     samplesWritten += 1
                 }
@@ -427,9 +433,14 @@ func (channel *Channel) Update(rate float32) {
 
     for range (samples - samplesWritten) {
         channel.AudioBuffer.UnsafeWrite(0.0)
+        channel.AudioBuffer.UnsafeWrite(0.0)
+
+        channel.ScopeBuffer.UnsafeWrite(0.0)
+        channel.ScopeBuffer.UnsafeWrite(0.0)
     }
 
     channel.AudioBuffer.Unlock()
+    channel.ScopeBuffer.Unlock()
 
 }
 
@@ -530,7 +541,8 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         channels[index] = &Channel{
             Channel: channelNum,
             Player: player,
-            AudioBuffer: common.MakeAudioBuffer(sampleRate),
+            AudioBuffer: common.MakeAudioBuffer(sampleRate * 2),
+            ScopeBuffer: common.MakeAudioBuffer(sampleRate * 2 / 10),
             Pan: int(pan),
             Volume: 1.0,
             buffer: make([]float32, sampleRate),
@@ -707,6 +719,18 @@ func (player *Player) GetChannelCount() int {
 
 func (player *Player) GetName() string {
     return player.S3M.Name
+}
+
+func (player *Player) IsStereo() bool {
+    return true
+}
+
+func (player *Player) GetChannelData(channel int, data []float32) int {
+    if channel < len(player.Channels) {
+        return player.Channels[channel].ScopeBuffer.Peek(data)
+    }
+
+    return 0
 }
 
 func (player *Player) ResetRow() {

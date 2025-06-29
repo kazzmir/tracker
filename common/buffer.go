@@ -72,6 +72,54 @@ func (buffer *AudioBuffer) Read(data []float32) int {
     return total
 }
 
+// copy data from the start of the buffer without removing it. returns the number of samples copied
+func (buffer *AudioBuffer) Peek(data []float32) int {
+    buffer.lock.Lock()
+    defer buffer.lock.Unlock()
+
+    if buffer.count == 0 {
+        return 0
+    }
+
+    // using copy() is much faster than a for loop, so we copy ranges of bytes out of the
+    // ring buffer
+
+    dataIndex := 0
+    bufferStart := buffer.start
+    bufferEnd := buffer.start + buffer.count
+
+    if bufferEnd > len(buffer.Buffer) {
+        bufferEnd = len(buffer.Buffer)
+    }
+
+    if bufferEnd - bufferStart > len(data) {
+        bufferEnd = bufferStart + len(data)
+    }
+
+    copy(data[dataIndex:], buffer.Buffer[bufferStart:bufferEnd])
+
+    copied := bufferEnd - bufferStart
+
+    dataIndex += bufferEnd - bufferStart
+    toCopy := buffer.count - (bufferEnd - bufferStart)
+
+    if toCopy > 0 {
+        // must wrap around
+        bufferStart = 0
+        bufferEnd = toCopy
+
+        if bufferEnd > len(data) - dataIndex {
+            bufferEnd = len(data) - dataIndex
+        }
+
+        copy(data[dataIndex:], buffer.Buffer[bufferStart:bufferStart + bufferEnd])
+
+        copied += bufferEnd
+    }
+
+    return copied
+}
+
 func (buffer *AudioBuffer) UnsafeWrite(value float32) {
     if buffer.count < len(buffer.Buffer) {
         buffer.count += 1
@@ -83,6 +131,16 @@ func (buffer *AudioBuffer) UnsafeWrite(value float32) {
         // buffer.end = (buffer.end + 1) % len(buffer.Buffer)
     } else {
         // log.Printf("overflow in audio buffer, dropping sample %v", value)
+
+        buffer.Buffer[buffer.end] = value
+        buffer.end += 1
+        if buffer.end >= len(buffer.Buffer) {
+            buffer.end = 0
+        }
+        buffer.start += 1
+        if buffer.start >= len(buffer.Buffer) {
+            buffer.start = 0
+        }
     }
 }
 

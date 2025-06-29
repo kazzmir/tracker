@@ -37,6 +37,7 @@ func (vibrato *Vibrato) Apply(frequency int) int {
 type Channel struct {
     Player *Player
     AudioBuffer *common.AudioBuffer
+    ScopeBuffer *common.AudioBuffer
     ChannelNumber int
 
     Vibrato Vibrato
@@ -496,6 +497,7 @@ func (channel *Channel) Update(rate float32) error {
     samplesWritten := 0
 
     channel.AudioBuffer.Lock()
+    channel.ScopeBuffer.Lock()
 
     if channel.CurrentSample != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
         frequency := channel.CurrentFrequency
@@ -523,6 +525,7 @@ func (channel *Channel) Update(rate float32) error {
                     }
                 }
                 channel.AudioBuffer.UnsafeWrite(channel.CurrentSample.Data[position] * channel.Volume)
+                channel.ScopeBuffer.UnsafeWrite(channel.CurrentSample.Data[position] * channel.Volume)
                 channel.startPosition += incrementRate
                 samplesWritten += 1
             }
@@ -540,9 +543,11 @@ func (channel *Channel) Update(rate float32) error {
 
     for range (samples - samplesWritten) {
         channel.AudioBuffer.UnsafeWrite(0.0)
+        channel.ScopeBuffer.UnsafeWrite(0.0)
     }
 
     channel.AudioBuffer.Unlock()
+    channel.ScopeBuffer.Unlock()
 
     return nil
 }
@@ -552,6 +557,7 @@ func MakeChannelVoice(channelNumber int, player *Player) *Channel {
         Player: player,
         ChannelNumber: channelNumber,
         AudioBuffer: common.MakeAudioBuffer(player.SampleRate),
+        ScopeBuffer: common.MakeAudioBuffer(player.SampleRate / 10),
         Volume: 1.0,
         buffer: make([]float32, player.SampleRate),
         // currentRow: -1,
@@ -724,6 +730,18 @@ func (player *Player) ResetRow() {
 
 func (player *Player) GetCurrentOrder() int {
     return player.CurrentOrder
+}
+
+func (player *Player) IsStereo() bool {
+    return false
+}
+
+func (player *Player) GetChannelData(channel int, data []float32) int {
+    if channel < 0 || channel >= len(player.Channels) {
+        return 0
+    }
+
+    return player.Channels[channel].ScopeBuffer.Peek(data)
 }
 
 func (player *Player) Update(timeDelta float32) {
