@@ -541,8 +541,8 @@ func MakePlayer(file *S3MFile, sampleRate int) *Player {
         channels[index] = &Channel{
             Channel: channelNum,
             Player: player,
-            AudioBuffer: common.MakeAudioBuffer(sampleRate),
-            ScopeBuffer: common.MakeAudioBuffer(sampleRate),
+            AudioBuffer: common.MakeAudioBuffer(sampleRate * 2),
+            ScopeBuffer: common.MakeAudioBuffer(sampleRate * 2 / 10),
             Pan: int(pan),
             Volume: 1.0,
             buffer: make([]float32, sampleRate),
