@@ -138,7 +138,7 @@ func (channel *Channel) UpdateRow() {
 
     if note.ChangeNote {
         if note.Note == 255 || note.Note == 254 {
-            log.Printf("channel %v note %v", channel.Channel, note.Note)
+            // log.Printf("channel %v note %v", channel.Channel, note.Note)
             newSample = -1
         } else {
             newPeriod = Octaves[note.Note]
@@ -162,6 +162,12 @@ func (channel *Channel) UpdateRow() {
             if channel.Player.BPM < 32 {
                 channel.Player.BPM = 32
             }
+        case EffectPatternJump:
+            channel.Player.DoJump = true
+            channel.Player.JumpOrder = channel.EffectParameter & 0x7f
+            if channel.Player.JumpOrder >= len(channel.Player.S3M.Orders) {
+                channel.Player.JumpOrder = 0
+            }
         case EffectPortamentoToNote:
             channel.CurrentEffect = EffectPortamentoToNote
             if note.EffectParameter > 0 {
@@ -174,8 +180,8 @@ func (channel *Channel) UpdateRow() {
 
             newPeriod = channel.CurrentPeriod
         case EffectPatternBreak:
-            channel.Player.NextOrder()
-            channel.Player.CurrentRow = channel.EffectParameter
+            channel.Player.DoBreak = true
+            channel.Player.BreakRow = channel.EffectParameter & 0x7f
         case EffectSampleOffset:
             channel.startPosition = float32(channel.EffectParameter) * 0x100
         case EffectRetriggerAndVolumeSlide:
@@ -560,6 +566,12 @@ type Player struct {
     OrdersPlayed int
     ticks float32
 
+    DoJump bool
+    JumpOrder int
+
+    DoBreak bool
+    BreakRow int
+
     OnChangeRow func(row int)
     OnChangeOrder func(order int, pattern int)
     OnChangeSpeed func(speed int, bpm int)
@@ -663,6 +675,21 @@ func (player *Player) Update(timeDelta float32) {
         player.CurrentRow += 1
         // log.Printf("Row: %v", player.CurrentRow)
         player.ticks -= float32(player.Speed)
+
+        if player.DoBreak {
+            player.DoBreak = false
+            player.NextOrder()
+            player.CurrentRow = player.BreakRow
+        }
+
+        if player.DoJump {
+            player.DoJump = false
+            player.CurrentRow = 0
+            player.CurrentOrder = player.JumpOrder
+            if player.OnChangeOrder != nil {
+                player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
+            }
+        }
 
         if player.OnChangeRow != nil {
             player.OnChangeRow(player.CurrentRow)
