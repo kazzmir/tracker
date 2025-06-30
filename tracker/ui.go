@@ -7,6 +7,7 @@ import (
     _ "embed"
     "log"
     "fmt"
+    "time"
     "slices"
     "cmp"
 
@@ -375,9 +376,30 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         widget.TextOpts.Text(fmt.Sprintf("Speed: %d BPM: %d", player.GetSpeed(), player.GetBPM()), face, color.White),
     )
 
+    secondTimer := time.NewTicker(1 * time.Second)
+
+    var timerText *widget.Text
+    currentSeconds := 0
+    timerText = widget.NewText(
+        widget.TextOpts.Text(fmt.Sprintf("Time: 0:00"), face, color.White),
+        widget.TextOpts.WidgetOpts(
+            widget.WidgetOpts.OnUpdate(func (w widget.HasWidget){
+                select {
+                    case <-secondTimer.C:
+                        currentSeconds += 1
+                        minutes := currentSeconds / 60
+                        seconds := currentSeconds % 60
+                        timerText.Label = fmt.Sprintf("Time: %d:%02d", minutes, seconds)
+                    default:
+                }
+            }),
+        ),
+    )
+
     infoContainer.AddChild(orderText)
     infoContainer.AddChild(patternText)
     infoContainer.AddChild(speedText)
+    infoContainer.AddChild(timerText)
 
     rootContainer.AddChild(topContainer)
 
