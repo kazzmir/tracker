@@ -454,7 +454,7 @@ func main(){
             return
         }
     } else if *cli {
-        if player == nil {
+        if len(flag.Args()) == 0 {
             log.Printf("Give a mod or s3m file to play in CLI mode")
             return
         }
