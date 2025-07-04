@@ -2,7 +2,6 @@ package common
 
 import (
     "sync"
-    "log"
 )
 
 type AudioBuffer struct {
@@ -164,7 +163,7 @@ func (buffer *AudioBuffer) Write(data []float32, rate float32) {
 }
 
 func MakeAudioBuffer(bufferSize int) *AudioBuffer {
-    log.Printf("Creating audio buffer with sample rate %d", bufferSize)
+    // log.Printf("Creating audio buffer with sample rate %d", bufferSize)
     return &AudioBuffer{
         Buffer: make([]float32, bufferSize),
     }
