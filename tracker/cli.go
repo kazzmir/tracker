@@ -23,7 +23,7 @@ func runCli(player TrackerPlayer, sampleRate int) error {
 
     var otoPlayers []*oto.Player
 
-    for i, channel := range player.GetChannelReaders() {
+    for _, channel := range player.GetChannelReaders() {
         playChannel := context.NewPlayer(channel)
         otoPlayers = append(otoPlayers, playChannel)
         playChannel.SetBufferSize(sampleRate * 2 * 4 / 10)
@@ -31,9 +31,11 @@ func runCli(player TrackerPlayer, sampleRate int) error {
         // engine.Players = append(engine.Players, playChannel)
         playChannel.Play()
 
+        /*
         runtime.AddCleanup(playChannel, func(i int) {
             log.Printf("Cleaning up player %v", i)
         }, i)
+        */
 
         if playChannel.Err() != nil {
             return playChannel.Err()
@@ -44,33 +46,30 @@ func runCli(player TrackerPlayer, sampleRate int) error {
     var rate float32 = 1.0 / 100
     sleepTime := time.Duration(float64(time.Second) * float64(rate))
 
+    last := time.Now()
+    var counter time.Duration
+
     for {
-        /*
-        for i, player := range otoPlayers {
-            if !player.IsPlaying() {
-                log.Printf("Player stopped, restarting...")
-                player.Play()
-            }
+        current := time.Now()
 
-            log.Printf("Player %v buffer size %v", i, player.BufferedSize())
+        diff := current.Sub(last)
+
+        counter += diff
+        last = current
+        // log.Printf("Update diff %v: %v vs %v. counter %v sleep time %v", diff, rate, rate * float32(diff / time.Millisecond), counter, sleepTime)
+
+        for counter > sleepTime {
+            player.Update(rate)
+            counter -= sleepTime
         }
-        */
 
-        player.Update(rate)
-        time.Sleep(sleepTime)
+        time.Sleep(5 * time.Millisecond)
+
+        // KeepAlive() must be inside the loop because if it is outside (under the loop) then
+        // the optimizer will remove the call to KeepAlive(), thus leaving otoPlayers available
+        // to be GC'd.
         runtime.KeepAlive(otoPlayers)
     }
-
-    /*
-    for {
-        time.Sleep(time.Second / 60)
-    }
-    */
-
-    /*
-    runtime.KeepAlive(context)
-    runtime.KeepAlive(otoPlayers)
-    */
 
     return nil
 }

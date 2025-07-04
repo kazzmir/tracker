@@ -517,6 +517,10 @@ func (channel *Channel) Read(data []byte) (int, error) {
 
     samples := len(data) / 4
 
+    if samples > len(channel.buffer) {
+        samples = len(channel.buffer)
+    }
+
     // sampleFrequency := 22050 / 2
     // samples = (samples * sampleFrequency) / channel.Engine.SampleRate
 
