@@ -4,7 +4,7 @@ import (
     "io"
     "log"
     "math"
-    // "runtime"
+    "runtime"
 
     "github.com/kazzmir/tracker/common"
 )
@@ -550,7 +550,7 @@ func (channel *Channel) Read(data []byte) (int, error) {
     i *= 4
 
     // in a browser we have to return something, so we generate some silence
-    if i == 0 /* && runtime.GOOS == "js" */ {
+    if i == 0 && runtime.GOOS == "js" {
         for i < 8 {
             data[i] = 0
             i += 1
