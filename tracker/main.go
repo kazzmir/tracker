@@ -23,6 +23,8 @@ import (
     "github.com/hajimehoshi/ebiten/v2/audio"
 
     "github.com/ebitenui/ebitenui"
+
+    // "github.com/ebitenengine/oto/v3"
 )
 
 type TrackerPlayer interface {
@@ -344,6 +346,39 @@ func tryLoadMod(path string) (*mod.ModFile, error) {
     return mod.Load(file)
 }
 
+func runCli(player TrackerPlayer, sampleRate int) error {
+    return nil
+}
+
+func runGui(player TrackerPlayer, sampleRate int) error {
+    fps := 30
+
+    ebiten.SetTPS(fps)
+    ebiten.SetWindowSize(1200, 800)
+    ebiten.SetWindowTitle("Mod Tracker")
+    ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+
+    audioContext := audio.NewContext(sampleRate)
+
+    /*
+    modPlayer.CurrentOrder = 0x10
+    modPlayer.Channels[0].Mute = true
+    modPlayer.Channels[1].Mute = true
+    modPlayer.Channels[3].Mute = true
+    */
+
+    engine, err := MakeEngine(player, audioContext, fps)
+    if err != nil {
+        return err
+    }
+
+    if len(flag.Args()) == 0 {
+        engine.LoadSongFromFilesystem(data.Data, "data/strshine.s3m")
+    }
+
+    return ebiten.RunGame(engine)
+}
+
 func main(){
     log.SetFlags(log.Lshortfile | log.Ldate | log.Lmicroseconds)
 
@@ -351,6 +386,7 @@ func main(){
 
     profile := flag.Bool("profile", false, "Enable profiling")
     wav := flag.String("wav", "", "Output wav file")
+    cli := flag.Bool("cli", false, "Run in CLI mode without GUI")
     flag.Parse()
 
     if len(flag.Args()) == 0 && *wav != "" {
@@ -422,35 +458,13 @@ func main(){
             log.Printf("Error saving to wav: %v", err)
             return
         }
-    } else {
-
-        fps := 30
-
-        ebiten.SetTPS(fps)
-        ebiten.SetWindowSize(1200, 800)
-        ebiten.SetWindowTitle("Mod Tracker")
-        ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-
-        audioContext := audio.NewContext(sampleRate)
-
-        /*
-        modPlayer.CurrentOrder = 0x10
-        modPlayer.Channels[0].Mute = true
-        modPlayer.Channels[1].Mute = true
-        modPlayer.Channels[3].Mute = true
-        */
-
-        engine, err := MakeEngine(player, audioContext, fps)
+    } else if *cli {
+        err := runCli(player, sampleRate)
         if err != nil {
-            log.Printf("Error creating engine: %v", err)
-            return
+            log.Printf("Error: %v", err)
         }
-
-        if len(flag.Args()) == 0 {
-            engine.LoadSongFromFilesystem(data.Data, "data/strshine.s3m")
-        }
-
-        err = ebiten.RunGame(engine)
+    } else {
+        err := runGui(player, sampleRate)
         if err != nil {
             log.Printf("Error: %v", err)
         }
