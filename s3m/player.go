@@ -4,7 +4,7 @@ import (
     "io"
     "log"
     "math"
-    "runtime"
+    // "runtime"
 
     "github.com/kazzmir/tracker/common"
 )
@@ -477,8 +477,10 @@ func (channel *Channel) Update(rate float32) {
                     channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample * leftPan)))
                     channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample * rightPan)))
 
+                    /*
                     channel.ScopeBuffer.UnsafeWrite(max(-1, min(1, sample * leftPan)))
                     channel.ScopeBuffer.UnsafeWrite(max(-1, min(1, sample * rightPan)))
+                    */
 
                     channel.startPosition += incrementRate
                     samplesWritten += 1
@@ -487,12 +489,16 @@ func (channel *Channel) Update(rate float32) {
         }
     }
 
+    // log.Printf("Channel %v wrote %v samples / %v needed", channel.Channel, samplesWritten, samples)
+
     for range (samples - samplesWritten) {
         channel.AudioBuffer.UnsafeWrite(0.0)
         channel.AudioBuffer.UnsafeWrite(0.0)
 
+        /*
         channel.ScopeBuffer.UnsafeWrite(0.0)
         channel.ScopeBuffer.UnsafeWrite(0.0)
+        */
     }
 
     channel.AudioBuffer.Unlock()
@@ -544,7 +550,7 @@ func (channel *Channel) Read(data []byte) (int, error) {
     i *= 4
 
     // in a browser we have to return something, so we generate some silence
-    if i == 0 && runtime.GOOS == "js" {
+    if i == 0 /* && runtime.GOOS == "js" */ {
         for i < 8 {
             data[i] = 0
             i += 1
@@ -552,6 +558,7 @@ func (channel *Channel) Read(data []byte) (int, error) {
         return 8, nil
     } else {
         // on a normal os we can just return 0 if necessary
+        // log.Printf("Channel %v return %v samples / %v", channel.Channel, floatSamples, len(data) / 4)
         return floatSamples * 4, nil
     }
 }

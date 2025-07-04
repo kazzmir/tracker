@@ -23,8 +23,6 @@ import (
     "github.com/hajimehoshi/ebiten/v2/audio"
 
     "github.com/ebitenui/ebitenui"
-
-    // "github.com/ebitenengine/oto/v3"
 )
 
 type TrackerPlayer interface {
@@ -346,9 +344,6 @@ func tryLoadMod(path string) (*mod.ModFile, error) {
     return mod.Load(file)
 }
 
-func runCli(player TrackerPlayer, sampleRate int) error {
-    return nil
-}
 
 func runGui(player TrackerPlayer, sampleRate int) error {
     fps := 30
@@ -459,6 +454,10 @@ func main(){
             return
         }
     } else if *cli {
+        if player == nil {
+            log.Printf("Give a mod or s3m file to play in CLI mode")
+            return
+        }
         err := runCli(player, sampleRate)
         if err != nil {
             log.Printf("Error: %v", err)
