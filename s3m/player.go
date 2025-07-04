@@ -487,6 +487,8 @@ func (channel *Channel) Update(rate float32) {
         }
     }
 
+    // log.Printf("Channel %v wrote %v samples / %v needed", channel.Channel, samplesWritten, samples)
+
     for range (samples - samplesWritten) {
         channel.AudioBuffer.UnsafeWrite(0.0)
         channel.AudioBuffer.UnsafeWrite(0.0)
@@ -510,6 +512,10 @@ func (channel *Channel) Read(data []byte) (int, error) {
     }
 
     samples := len(data) / 4
+
+    if samples > len(channel.buffer) {
+        samples = len(channel.buffer)
+    }
 
     // sampleFrequency := 22050 / 2
     // samples = (samples * sampleFrequency) / channel.Engine.SampleRate
@@ -552,6 +558,7 @@ func (channel *Channel) Read(data []byte) (int, error) {
         return 8, nil
     } else {
         // on a normal os we can just return 0 if necessary
+        // log.Printf("Channel %v return %v samples / %v", channel.Channel, floatSamples, len(data) / 4)
         return floatSamples * 4, nil
     }
 }

@@ -130,7 +130,7 @@ func (buffer *AudioBuffer) UnsafeWrite(value float32) {
         }
         // buffer.end = (buffer.end + 1) % len(buffer.Buffer)
     } else {
-        // log.Printf("overflow in audio buffer, dropping sample %v", value)
+        // log.Printf("overflow in audio buffer, dropping sample %v count is %v", value, buffer.count)
 
         buffer.Buffer[buffer.end] = value
         buffer.end += 1
@@ -162,10 +162,10 @@ func (buffer *AudioBuffer) Write(data []float32, rate float32) {
     }
 }
 
-func MakeAudioBuffer(sampleRate int) *AudioBuffer {
+func MakeAudioBuffer(bufferSize int) *AudioBuffer {
+    // log.Printf("Creating audio buffer with sample rate %d", bufferSize)
     return &AudioBuffer{
-        // one full second worth of buffering
-        Buffer: make([]float32, sampleRate),
+        Buffer: make([]float32, bufferSize),
     }
 }
 
