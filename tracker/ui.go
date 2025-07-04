@@ -554,6 +554,8 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             updateScopes = func() {
             }
         }
+
+        rootContainer.RequestRelayout()
     }
 
     setupOscilloscopes()

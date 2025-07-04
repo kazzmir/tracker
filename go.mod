@@ -3,7 +3,7 @@ module github.com/kazzmir/tracker
 go 1.24.1
 
 require (
-	github.com/ebitenui/ebitenui v0.6.3-0.20250604232716-d8f41d1373d4
+	github.com/ebitenui/ebitenui v0.6.3-0.20250628005355-701695832c0e
 	github.com/hajimehoshi/ebiten/v2 v2.8.8
 )
 
