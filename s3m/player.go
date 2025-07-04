@@ -477,10 +477,8 @@ func (channel *Channel) Update(rate float32) {
                     channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample * leftPan)))
                     channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample * rightPan)))
 
-                    /*
                     channel.ScopeBuffer.UnsafeWrite(max(-1, min(1, sample * leftPan)))
                     channel.ScopeBuffer.UnsafeWrite(max(-1, min(1, sample * rightPan)))
-                    */
 
                     channel.startPosition += incrementRate
                     samplesWritten += 1
@@ -495,10 +493,8 @@ func (channel *Channel) Update(rate float32) {
         channel.AudioBuffer.UnsafeWrite(0.0)
         channel.AudioBuffer.UnsafeWrite(0.0)
 
-        /*
         channel.ScopeBuffer.UnsafeWrite(0.0)
         channel.ScopeBuffer.UnsafeWrite(0.0)
-        */
     }
 
     channel.AudioBuffer.Unlock()
