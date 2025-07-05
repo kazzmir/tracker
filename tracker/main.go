@@ -170,7 +170,7 @@ func (engine *Engine) Initialize(player TrackerPlayer) {
             log.Printf("Could not create audio player for channel: %v", err)
             continue
         }
-        playChannel.SetBufferSize(time.Second / 20)
+        playChannel.SetBufferSize(time.Second / 25)
         playChannel.SetVolume(engine.volume)
         engine.Players = append(engine.Players, playChannel)
         // playChannel.Play()
@@ -263,9 +263,11 @@ func (engine *Engine) Update() error {
         }
         if !engine.Paused {
 
+            /*
             for range 60 / engine.fps {
                 engine.Player.Update(1.0/60)
             }
+            */
         }
     }
 

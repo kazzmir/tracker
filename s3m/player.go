@@ -676,7 +676,7 @@ func (player *Player) GenerateSamples(samples int) {
         n = 1
     }
 
-    log.Printf("Player generate %v samples at rate %v", samples, rate)
+    log.Printf("Player generate %v samples at rate %v n=%v", samples, rate, n)
     for range n {
         player.Update(0.01)
     }

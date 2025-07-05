@@ -26,7 +26,7 @@ func runCli(player TrackerPlayer, sampleRate int) error {
     for _, channel := range player.GetChannelReaders() {
         playChannel := context.NewPlayer(channel)
         otoPlayers = append(otoPlayers, playChannel)
-        playChannel.SetBufferSize(sampleRate * 2 * 4 / 10)
+        playChannel.SetBufferSize(sampleRate * 2 * 4 / 20)
         playChannel.SetVolume(0.8)
         // engine.Players = append(engine.Players, playChannel)
         playChannel.Play()
