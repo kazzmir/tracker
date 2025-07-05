@@ -856,10 +856,8 @@ func (player *Player) RenderToPCM() io.Reader {
 
             if amount > 0 {
                 // copy the samples into the mix buffer
-                normalizer := float32(len(player.Channels))
                 for i := range amount {
-                    // FIXME: this normalizer is too high, the output is too quiet
-                    mix[i] = mix[i] + buffer[i] / normalizer
+                    mix[i] = mix[i] + buffer[i]
                 }
             }
         }
