@@ -499,7 +499,6 @@ func (channel *Channel) Update(rate float32) {
 
     channel.AudioBuffer.Unlock()
     channel.ScopeBuffer.Unlock()
-
 }
 
 func (channel *Channel) Read(data []byte) (int, error) {
@@ -515,6 +514,10 @@ func (channel *Channel) Read(data []byte) (int, error) {
 
     if samples > len(channel.buffer) {
         samples = len(channel.buffer)
+    }
+
+    if channel.AudioBuffer.Len() < samples {
+        channel.Player.GenerateSamples((samples - channel.AudioBuffer.Len()) / 2)
     }
 
     // sampleFrequency := 22050 / 2
@@ -663,6 +666,23 @@ func (player *Player) GetInstrument(index int) *Instrument {
         return nil
     }
     return &player.S3M.Instruments[index]
+}
+
+func (player *Player) GenerateSamples(samples int) {
+    // ticksPerSecond := float32(player.BPM) * 2 / 5 / 60
+    rate := float32(samples) / float32(player.SampleRate)
+    n := int(rate / 0.01)
+    if n < 1 {
+        n = 1
+    }
+
+    log.Printf("Player generate %v samples at rate %v", samples, rate)
+    for range n {
+        player.Update(0.01)
+    }
+
+    // what time delta should we use for the given number of samples
+    // if samples==SampleRate then timeDelta = 1
 }
 
 func (player *Player) Update(timeDelta float32) {

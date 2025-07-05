@@ -22,6 +22,12 @@ func (buffer *AudioBuffer) Unlock() {
     buffer.lock.Unlock()
 }
 
+func (buffer *AudioBuffer) Len() int {
+    buffer.lock.Lock()
+    defer buffer.lock.Unlock()
+    return buffer.count
+}
+
 func (buffer *AudioBuffer) Clear() {
     buffer.lock.Lock()
     defer buffer.lock.Unlock()

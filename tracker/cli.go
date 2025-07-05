@@ -59,7 +59,7 @@ func runCli(player TrackerPlayer, sampleRate int) error {
         // log.Printf("Update diff %v: %v vs %v. counter %v sleep time %v", diff, rate, rate * float32(diff / time.Millisecond), counter, sleepTime)
 
         for counter > sleepTime {
-            player.Update(rate)
+            // player.Update(rate)
             counter -= sleepTime
         }
 
