@@ -4,10 +4,12 @@ import (
     "log"
     "time"
     "runtime"
+    "context"
+
     "github.com/ebitengine/oto/v3"
 )
 
-func runCli(player TrackerPlayer, sampleRate int) error {
+func runCli(player TrackerPlayer, sampleRate int, quit context.Context) error {
     var options oto.NewContextOptions
     options.SampleRate = sampleRate
     options.ChannelCount = 2
@@ -49,7 +51,7 @@ func runCli(player TrackerPlayer, sampleRate int) error {
     last := time.Now()
     var counter time.Duration
 
-    for {
+    for quit.Err() == nil {
         current := time.Now()
 
         diff := current.Sub(last)
@@ -63,7 +65,11 @@ func runCli(player TrackerPlayer, sampleRate int) error {
             counter -= sleepTime
         }
 
-        time.Sleep(5 * time.Millisecond)
+        select {
+            case <-time.After(5 * time.Millisecond):
+            case <-quit.Done():
+                return quit.Err()
+        }
 
         // KeepAlive() must be inside the loop because if it is outside (under the loop) then
         // the optimizer will remove the call to KeepAlive(), thus leaving otoPlayers available
