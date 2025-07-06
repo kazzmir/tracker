@@ -67,12 +67,20 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
 
     log.Printf("Header Size: %d", headerSize)
 
+    if headerSize < 20 + 1 {
+        return nil, fmt.Errorf("header size was invalid, must be at least 21 but was %d", headerSize)
+    }
+
     var songLength uint16
     err = binary.Read(reader, binary.LittleEndian, &songLength)
     if err != nil {
         return nil, fmt.Errorf("Error reading song length: %v", err)
     }
     log.Printf("Song Length: %d", songLength)
+
+    if songLength < 1 || songLength > 256 {
+        return nil, fmt.Errorf("Song length is invalid, must be between 1 and 256, got %d", songLength)
+    }
 
     var restartPosition uint16
     err = binary.Read(reader, binary.LittleEndian, &restartPosition)
@@ -123,6 +131,35 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
     }
 
     log.Printf("BPM: %d", bpm)
+
+    // number of bytes in the pattern order data
+    orderLength := headerSize - 20
+
+    limitReader := io.LimitReader(reader, int64(orderLength))
+
+    var orderData []byte
+
+    reader = bufio.NewReader(limitReader)
+    for {
+        pattern, err := reader.ReadByte()
+        if err != nil {
+            if err == io.EOF {
+                break
+            }
+            return nil, fmt.Errorf("Error reading pattern order: %v", err)
+        }
+        orderData = append(orderData, pattern)
+    }
+
+    if uint16(len(orderData)) > songLength {
+        orderData = orderData[:songLength]
+    }
+
+    log.Printf("Pattern Order Data: %v", orderData)
+
+    // pattern data
+    reader_.Seek(int64(headerSize + 60), io.SeekStart)
+    reader = bufio.NewReader(reader_)
 
     return &XMFile{}, nil
 }
