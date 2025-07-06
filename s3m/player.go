@@ -449,6 +449,8 @@ func (channel *Channel) Update(rate float32) {
             // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
 
             if incrementRate > 0 {
+                volume := channel.Volume * noteVolume * float32(channel.Player.GlobalVolume) / 64
+
                 for range samples {
                     position := int(channel.startPosition)
                     /*
@@ -468,7 +470,7 @@ func (channel *Channel) Update(rate float32) {
 
                     // noteVolume = 1
 
-                    sample := instrument.Data[position] * channel.Volume * noteVolume * float32(channel.Player.GlobalVolume) / 64
+                    sample := instrument.Data[position] * volume
                     if channel.CurrentEffect == EffectTremolo {
                         // log.Printf("tremolo %v -> %v", sample, channel.Tremolo.Apply(sample))
                         sample = channel.Tremolo.Apply(sample)

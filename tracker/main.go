@@ -2,6 +2,7 @@ package main
 
 import (
     "os"
+    "os/signal"
     "log"
     "time"
     "io"
@@ -11,6 +12,7 @@ import (
     // for discard
     // "io/ioutil"
     "flag"
+    "context"
     "runtime/pprof"
     "encoding/binary"
 
@@ -84,13 +86,16 @@ type Engine struct {
     Start sync.Once
     updates uint64
     Paused bool
+
+    quit context.Context
 }
 
-func MakeEngine(player TrackerPlayer, audioContext *audio.Context, fps int) (*Engine, error) {
+func MakeEngine(player TrackerPlayer, audioContext *audio.Context, fps int, quit context.Context) (*Engine, error) {
     engine := &Engine{
         AudioContext: audioContext,
         fps: fps,
         volume: 0.6,
+        quit: quit,
     }
 
     engine.Initialize(player)
@@ -223,6 +228,10 @@ func (engine *Engine) DoPause() {
 }
 
 func (engine *Engine) Update() error {
+    if engine.quit.Err() != nil {
+        return ebiten.Termination
+    }
+
     engine.updates += 1
 
     engine.LoadDroppedFiles()
@@ -376,7 +385,7 @@ func tryLoad(path string, sampleRate int) (TrackerPlayer, error) {
     return mod.MakePlayer(modFile, sampleRate), nil
 }
 
-func runGui(player TrackerPlayer, sampleRate int) error {
+func runGui(player TrackerPlayer, sampleRate int, quit context.Context) error {
     fps := 30
 
     ebiten.SetTPS(fps)
@@ -393,7 +402,7 @@ func runGui(player TrackerPlayer, sampleRate int) error {
     modPlayer.Channels[3].Mute = true
     */
 
-    engine, err := MakeEngine(player, audioContext, fps)
+    engine, err := MakeEngine(player, audioContext, fps, quit)
     if err != nil {
         return err
     }
@@ -433,6 +442,14 @@ func main(){
     }
 
     var player TrackerPlayer = &common.DummyPlayer{}
+    quit, cancel := context.WithCancel(context.Background())
+    defer cancel()
+    signalChan := make(chan os.Signal, 2)
+    go func(){
+        <-signalChan
+        cancel()
+    }()
+    signal.Notify(signalChan, os.Interrupt)
 
     sampleRate := 44100
 
@@ -479,12 +496,12 @@ func main(){
             log.Printf("Give a mod or s3m file to play in CLI mode")
             return
         }
-        err := runCli(player, sampleRate)
+        err := runCli(player, sampleRate, quit)
         if err != nil {
             log.Printf("Error: %v", err)
         }
     } else {
-        err := runGui(player, sampleRate)
+        err := runGui(player, sampleRate, quit)
         if err != nil {
             log.Printf("Error: %v", err)
         }
