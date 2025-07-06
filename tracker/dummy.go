@@ -55,6 +55,10 @@ func (player *DummyPlayer) RenderToPCM() io.Reader {
     return nil
 }
 
+func (player *DummyPlayer) ToggleMuteChannel(channel int) bool {
+    return false
+}
+
 func (player *DummyPlayer) ResetRow() {
 }
 

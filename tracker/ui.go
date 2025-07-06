@@ -87,6 +87,7 @@ type UIPlayer interface {
     GetChannelCount() int
     GetRowNoteInfo(channel int, row int) common.NoteInfo
     GetChannelData(channel int, data []float32) int
+    ToggleMuteChannel(channel int) bool
     IsStereo() bool
 }
 
@@ -314,16 +315,20 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         return window
     }
 
+    secondTimer := time.NewTicker(1 * time.Second)
+
     doPause := func() {
         if !windowActive {
             pauseWindow = makePauseWindow()
             pauseWindow.SetLocation(image.Rect(200, 180, 400, 180 + 100))
             ui.AddWindow(pauseWindow)
             windowActive = true
+            secondTimer.Stop()
             system.DoPause()
         } else if pauseWindow != nil {
             pauseWindow.Close()
             pauseWindow = nil
+            secondTimer.Reset(1 * time.Second)
             windowActive = false
             system.DoPause()
         }
@@ -375,8 +380,6 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     speedText := widget.NewText(
         widget.TextOpts.Text(fmt.Sprintf("Speed: %d BPM: %d", player.GetSpeed(), player.GetBPM()), face, color.White),
     )
-
-    secondTimer := time.NewTicker(1 * time.Second)
 
     var timerText *widget.Text
     currentSeconds := 0
@@ -686,9 +689,41 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
         )
 
-        column.AddChild(widget.NewText(
-            widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
-        ))
+        var channelButton *widget.Button
+
+        unmutedImage := &widget.ButtonImage{
+            Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
+            Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
+            Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
+        }
+
+        mutedImage := &widget.ButtonImage{
+            Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x70, G: 0x28, B: 0x0f, A: 255}),
+            Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x92, G: 0x34, B: 0x14, A: 255}),
+            Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0xc8, G: 0x47, B: 0x1b, A: 255}),
+        }
+
+        channelButton = widget.NewButton(
+            widget.ButtonOpts.Image(unmutedImage),
+            widget.ButtonOpts.Text(fmt.Sprintf("Channel %d", i+1), face, &widget.ButtonTextColor{
+                Idle: color.White,
+            }),
+            widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
+                if player.ToggleMuteChannel(i) {
+                    channelButton.Image = mutedImage
+                } else {
+                    channelButton.Image = unmutedImage
+                }
+            }),
+            widget.ButtonOpts.TextPadding(widget.Insets{
+                Left: 1,
+                Top: 1,
+                Bottom: 1,
+                Right: 1,
+            }),
+        )
+
+        column.AddChild(channelButton)
 
         background := color.NRGBA{R: 64, G: 64, B: 64, A: 255}
         if i % 2 == 0 {

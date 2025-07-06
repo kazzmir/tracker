@@ -605,6 +605,15 @@ func MakePlayer(modfile *ModFile, sampleRate int) *Player {
     return player
 }
 
+func (player *Player) ToggleMuteChannel(channel int) bool {
+    if channel < 0 || channel >= len(player.Channels) {
+        return false
+    }
+
+    player.Channels[channel].Mute = !player.Channels[channel].Mute
+    return player.Channels[channel].Mute
+}
+
 func (player *Player) GetSample(sampleNumber byte) *Sample {
     if sampleNumber < 0 || int(sampleNumber) >= len(player.ModFile.Samples) {
         return nil

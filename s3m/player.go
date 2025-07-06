@@ -773,6 +773,15 @@ func (player *Player) GetChannelReaders() []io.Reader {
     return readers
 }
 
+func (player *Player) ToggleMuteChannel(channel int) bool {
+    if channel < 0 || channel >= len(player.Channels) {
+        return false
+    }
+
+    player.Channels[channel].Mute = !player.Channels[channel].Mute
+    return player.Channels[channel].Mute
+}
+
 func (player *Player) NextOrder() {
     player.CurrentOrder += 1
     if player.CurrentOrder >= player.S3M.SongLength {
