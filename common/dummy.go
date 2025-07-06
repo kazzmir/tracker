@@ -1,11 +1,10 @@
-package main
+package common
 
 import (
     "io"
-
-    "github.com/kazzmir/tracker/common"
 )
 
+// dummy implementation of TrackerPlayer
 type DummyPlayer struct {
 }
 
@@ -74,7 +73,7 @@ func (player *DummyPlayer) SetOnChangeSpeed(onChangeSpeed func(int, int)) {
 func (player *DummyPlayer) Update(delta float32) {
 }
 
-func (player *DummyPlayer) GetRowNoteInfo(channel int, row int) common.NoteInfo {
+func (player *DummyPlayer) GetRowNoteInfo(channel int, row int) NoteInfo {
     return nil
 }
 

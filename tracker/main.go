@@ -18,6 +18,7 @@ import (
     "github.com/kazzmir/tracker/s3m"
     "github.com/kazzmir/tracker/xm"
     "github.com/kazzmir/tracker/data"
+    "github.com/kazzmir/tracker/common"
 
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -362,15 +363,17 @@ func tryLoad(path string, sampleRate int) (TrackerPlayer, error) {
         return s3m.MakePlayer(s3mFile, sampleRate), nil
     }
 
+    log.Printf("Unable to load s3m: %v", err)
+
     xmFile, err := tryLoadXM(path)
     if err == nil {
         return xm.MakePlayer(xmFile, sampleRate), nil
     }
 
-    log.Printf("Unable to load s3m: %v", err)
+    log.Printf("Unable to load xm: %v", err)
 
     modFile, err := tryLoadMod(path)
-    return mod.MakePlayer(modFile, sampleRate)
+    return mod.MakePlayer(modFile, sampleRate), nil
 }
 
 func runGui(player TrackerPlayer, sampleRate int) error {
@@ -429,14 +432,19 @@ func main(){
         defer pprof.StopCPUProfile()
     }
 
-    var player TrackerPlayer = &DummyPlayer{}
+    var player TrackerPlayer = &common.DummyPlayer{}
 
     sampleRate := 44100
 
     if len(flag.Args()) > 0 {
         path := flag.Args()[0]
 
+        var err error
         player, err = tryLoad(path, sampleRate)
+        if err != nil {
+            log.Printf("Error loading module: %v", err)
+            return
+        }
     } else {
         /*
         dataFile, name, err := data.FindMod()
