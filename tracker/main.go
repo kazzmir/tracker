@@ -16,6 +16,7 @@ import (
 
     "github.com/kazzmir/tracker/mod"
     "github.com/kazzmir/tracker/s3m"
+    "github.com/kazzmir/tracker/xm"
     "github.com/kazzmir/tracker/data"
 
     "github.com/hajimehoshi/ebiten/v2"
@@ -344,6 +345,33 @@ func tryLoadMod(path string) (*mod.ModFile, error) {
     return mod.Load(file)
 }
 
+func tryLoadXM(path string) (*xm.XMFile, error) {
+    file, err := os.Open(path)
+    if err != nil {
+        return nil, err
+    }
+
+    defer file.Close()
+
+    return xm.Load(file)
+}
+
+func tryLoad(path string, sampleRate int) (TrackerPlayer, error) {
+    s3mFile, err := tryLoadS3m(path)
+    if err == nil {
+        return s3m.MakePlayer(s3mFile, sampleRate), nil
+    }
+
+    xmFile, err := tryLoadXM(path)
+    if err == nil {
+        return xm.MakePlayer(xmFile, sampleRate), nil
+    }
+
+    log.Printf("Unable to load s3m: %v", err)
+
+    modFile, err := tryLoadMod(path)
+    return mod.MakePlayer(modFile, sampleRate)
+}
 
 func runGui(player TrackerPlayer, sampleRate int) error {
     fps := 30
@@ -408,22 +436,7 @@ func main(){
     if len(flag.Args()) > 0 {
         path := flag.Args()[0]
 
-        s3mFile, err := tryLoadS3m(path)
-        if err != nil {
-            log.Printf("Unable to load s3m: %v", err)
-
-            modFile, err := tryLoadMod(path)
-            if err != nil {
-                log.Printf("Error loading %v: %v", path, err)
-                return
-            } else {
-                player = mod.MakePlayer(modFile, sampleRate)
-                log.Printf("Successfully loaded %v", path)
-                log.Printf("Mod name: '%v'", modFile.Name)
-            }
-        } else {
-            player = s3m.MakePlayer(s3mFile, sampleRate)
-        }
+        player, err = tryLoad(path, sampleRate)
     } else {
         /*
         dataFile, name, err := data.FindMod()
