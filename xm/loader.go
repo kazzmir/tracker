@@ -161,5 +161,50 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
     reader_.Seek(int64(headerSize + 60), io.SeekStart)
     reader = bufio.NewReader(reader_)
 
+    for i := range patternCount {
+        log.Printf("Reading pattern %d", i)
+
+        var patternHeaderSize uint32
+        err = binary.Read(reader, binary.LittleEndian, &patternHeaderSize)
+        if err != nil {
+            return nil, fmt.Errorf("Error reading pattern header size: %v", err)
+        }
+        log.Printf("Pattern Header Size: %d", patternHeaderSize)
+
+        _, err = reader.Discard(1)
+        if err != nil {
+            return nil, fmt.Errorf("Error discarding byte: %v", err)
+        }
+
+        var rows uint16
+        err = binary.Read(reader, binary.LittleEndian, &rows)
+        if err != nil {
+            return nil, fmt.Errorf("Error reading rows: %v", err)
+        }
+
+        log.Printf("Rows: %d", rows)
+
+        if rows < 1 || rows > 256 {
+            return nil, fmt.Errorf("Rows must be between 1 and 256, got %d", rows)
+        }
+
+        var packedSize uint16
+        err = binary.Read(reader, binary.LittleEndian, &packedSize)
+        if err != nil {
+            return nil, fmt.Errorf("Error reading packed size: %v", err)
+        }
+
+        log.Printf("Packed Size: %d", packedSize)
+        if packedSize > 0 {
+            patternData := make([]byte, packedSize)
+            _, err = io.ReadFull(reader, patternData)
+            if err != nil {
+                return nil, fmt.Errorf("Error reading pattern data: %v", err)
+            }
+        } else {
+            log.Printf("Empty pattern..")
+        }
+    }
+
     return &XMFile{}, nil
 }
