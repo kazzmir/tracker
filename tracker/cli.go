@@ -76,4 +76,6 @@ func runCli(player TrackerPlayer, sampleRate int, quit context.Context) error {
         // to be GC'd.
         runtime.KeepAlive(otoPlayers)
     }
+
+    return nil
 }
