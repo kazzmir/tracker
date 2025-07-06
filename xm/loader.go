@@ -159,17 +159,18 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
 
     // pattern data
     reader_.Seek(int64(headerSize + 60), io.SeekStart)
-    reader = bufio.NewReader(reader_)
 
     for i := range patternCount {
         log.Printf("Reading pattern %d", i)
 
         var patternHeaderSize uint32
-        err = binary.Read(reader, binary.LittleEndian, &patternHeaderSize)
+        err = binary.Read(reader_, binary.LittleEndian, &patternHeaderSize)
         if err != nil {
             return nil, fmt.Errorf("Error reading pattern header size: %v", err)
         }
         log.Printf("Pattern Header Size: %d", patternHeaderSize)
+
+        reader = bufio.NewReader(io.LimitReader(reader_, int64(patternHeaderSize)))
 
         _, err = reader.Discard(1)
         if err != nil {
@@ -203,6 +204,70 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
             }
         } else {
             log.Printf("Empty pattern..")
+        }
+    }
+
+    for i := range instrumentCount {
+        log.Printf("Reading instrument %d", i)
+        var size uint32
+        err = binary.Read(reader_, binary.LittleEndian, &size)
+        if err != nil {
+            return nil, fmt.Errorf("Error reading instrument size: %v", err)
+        }
+        log.Printf("Instrument Size: %d", size)
+
+        reader = bufio.NewReader(io.LimitReader(reader_, int64(size)))
+
+        name := make([]byte, 22)
+        _, err = io.ReadFull(reader, name)
+        if err != nil {
+            return nil, fmt.Errorf("Error reading instrument name: %v", err)
+        }
+        name = bytes.TrimRight(name, "\x00")
+        log.Printf("Instrument Name: '%s'", name)
+
+        _, err = reader.Discard(1)
+        if err != nil {
+            return nil, fmt.Errorf("Error reading instrument type: %v", err)
+        }
+
+        var samples uint16
+        err = binary.Read(reader, binary.LittleEndian, &samples)
+        if err != nil {
+            return nil, fmt.Errorf("Error reading sample count: %v", err)
+        }
+
+        log.Printf("Sample Count: %d", samples)
+        if samples > 0 {
+            var sampleHeaderSize uint32
+            err = binary.Read(reader, binary.LittleEndian, &sampleHeaderSize)
+            if err != nil {
+                return nil, fmt.Errorf("Error reading sample header size: %v", err)
+            }
+            log.Printf("Sample Header Size: %d", sampleHeaderSize)
+
+            keymapAssignments, err := reader.ReadByte()
+            if err != nil {
+                return nil, fmt.Errorf("Error reading keymap assignments: %v", err)
+            }
+
+            log.Printf("Keymap Assignments: %d", keymapAssignments)
+
+            volumeEnvelopePoints := make([]uint16, 24)
+            for i := range volumeEnvelopePoints {
+                err = binary.Read(reader, binary.LittleEndian, &volumeEnvelopePoints[i])
+                if err != nil {
+                    return nil, fmt.Errorf("Error reading volume envelope points: %v", err)
+                }
+            }
+
+            panningEnvelopePoints := make([]uint16, 24)
+            for i := range panningEnvelopePoints {
+                err = binary.Read(reader, binary.LittleEndian, &panningEnvelopePoints[i])
+                if err != nil {
+                    return nil, fmt.Errorf("Error reading panning envelope points: %v", err)
+                }
+            }
         }
     }
 
