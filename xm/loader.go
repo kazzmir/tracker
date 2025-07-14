@@ -15,8 +15,18 @@ type XMFile struct {
 func Load(reader_ io.ReadSeeker) (*XMFile, error) {
     reader := bufio.NewReader(reader_)
 
+    maximumFileSize, err := reader_.Seek(0, io.SeekEnd)
+    if err != nil {
+        return nil, fmt.Errorf("Error seeking to end of file: %v", err)
+    }
+
+    _, err = reader_.Seek(0, io.SeekStart)
+    if err != nil {
+        return nil, fmt.Errorf("Error seeking to start of file: %v", err)
+    }
+
     idText := make([]byte, 17)
-    _, err := io.ReadFull(reader, idText)
+    _, err = io.ReadFull(reader, idText)
     if err != nil {
         return nil, err
     }
@@ -160,17 +170,21 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
     // pattern data
     reader_.Seek(int64(headerSize + 60), io.SeekStart)
 
+    reader = bufio.NewReader(reader_)
+
     for i := range patternCount {
         log.Printf("Reading pattern %d", i)
 
         var patternHeaderSize uint32
-        err = binary.Read(reader_, binary.LittleEndian, &patternHeaderSize)
+        err = binary.Read(reader, binary.LittleEndian, &patternHeaderSize)
         if err != nil {
             return nil, fmt.Errorf("Error reading pattern header size: %v", err)
         }
-        log.Printf("Pattern Header Size: %d", patternHeaderSize)
+        // log.Printf("Pattern Header Size: %d", patternHeaderSize)
 
-        reader = bufio.NewReader(io.LimitReader(reader_, int64(patternHeaderSize)))
+        if int64(patternHeaderSize) > maximumFileSize {
+            return nil, fmt.Errorf("Pattern header size exceeds maximum file size: %d > %d", patternHeaderSize, maximumFileSize)
+        }
 
         _, err = reader.Discard(1)
         if err != nil {
@@ -195,7 +209,7 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
             return nil, fmt.Errorf("Error reading packed size: %v", err)
         }
 
-        log.Printf("Packed Size: %d", packedSize)
+        // log.Printf("Packed Size: %d", packedSize)
         if packedSize > 0 {
             patternData := make([]byte, packedSize)
             _, err = io.ReadFull(reader, patternData)
@@ -210,13 +224,13 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
     for i := range instrumentCount {
         log.Printf("Reading instrument %d", i)
         var size uint32
-        err = binary.Read(reader_, binary.LittleEndian, &size)
+        err = binary.Read(reader, binary.LittleEndian, &size)
         if err != nil {
             return nil, fmt.Errorf("Error reading instrument size: %v", err)
         }
         log.Printf("Instrument Size: %d", size)
 
-        reader = bufio.NewReader(io.LimitReader(reader_, int64(size)))
+        reader = bufio.NewReader(io.LimitReader(reader, int64(size)))
 
         name := make([]byte, 22)
         _, err = io.ReadFull(reader, name)
