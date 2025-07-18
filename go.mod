@@ -4,7 +4,7 @@ go 1.24.1
 
 require (
 	github.com/ebitengine/oto/v3 v3.3.3
-	github.com/ebitenui/ebitenui v0.6.3-0.20250628005355-701695832c0e
+	github.com/ebitenui/ebitenui v0.6.3-0.20250716234436-e04fff6d1144
 	github.com/hajimehoshi/ebiten/v2 v2.8.8
 )
 
