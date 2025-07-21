@@ -7,12 +7,28 @@ import (
     "log"
     "bytes"
     "encoding/binary"
+    "errors"
 )
 
 type XMFile struct {
 }
 
 type Instrument struct {
+}
+
+type Sample struct {
+    Name string
+    Length uint32
+    LoopStart uint32
+    LoopLength uint32
+    Volume uint8
+    FineTune int8
+    Type uint8
+    Panning uint8
+    RelativeNoteNumber int8
+    CompressionType uint8
+
+    Data []float32
 }
 
 func Load(reader_ io.ReadSeeker) (*XMFile, error) {
@@ -233,9 +249,7 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
         }
         log.Printf("Instrument Size: %d", size)
 
-        reader = bufio.NewReader(io.LimitReader(reader, int64(size)))
-
-        instrument, err := readInstrument(reader)
+        instrument, err := readInstrument(reader, size)
         if err != nil {
             return nil, fmt.Errorf("Error reading instrument %d: %v", i, err)
         }
@@ -246,37 +260,43 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
     return &XMFile{}, nil
 }
 
-func readInstrument(reader *bufio.Reader) (*Instrument, error) {
+func readInstrument(reader_ io.Reader, instrumentHeaderSize uint32) (*Instrument, error) {
+    instrumentReader := bufio.NewReader(io.LimitReader(reader_, int64(instrumentHeaderSize - 4)))
+
     name := make([]byte, 22)
-    _, err := io.ReadFull(reader, name)
+    _, err := io.ReadFull(instrumentReader, name)
     if err != nil {
         return nil, fmt.Errorf("Error reading instrument name: %v", err)
     }
     name = bytes.TrimRight(name, "\x00")
     log.Printf("Instrument Name: '%s'", name)
 
-    _, err = reader.Discard(1)
+    _, err = instrumentReader.Discard(1)
     if err != nil {
         return nil, fmt.Errorf("Error reading instrument type: %v", err)
     }
 
     var samples uint16
-    err = binary.Read(reader, binary.LittleEndian, &samples)
+    err = binary.Read(instrumentReader, binary.LittleEndian, &samples)
     if err != nil {
         return nil, fmt.Errorf("Error reading sample count: %v", err)
     }
 
+    var sampleHeaderSizes []uint32
+
     log.Printf("Sample Count: %d", samples)
     for range samples {
         var sampleHeaderSize uint32
-        err = binary.Read(reader, binary.LittleEndian, &sampleHeaderSize)
+        err = binary.Read(instrumentReader, binary.LittleEndian, &sampleHeaderSize)
         if err != nil {
             return nil, fmt.Errorf("Error reading sample header size: %v", err)
         }
         log.Printf("Sample Header Size: %d", sampleHeaderSize)
 
+        sampleHeaderSizes = append(sampleHeaderSizes, sampleHeaderSize)
+
         keymapAssignments := make([]byte, 96)
-        _, err = io.ReadFull(reader, keymapAssignments)
+        _, err = io.ReadFull(instrumentReader, keymapAssignments)
         if err != nil {
             return nil, fmt.Errorf("Error reading keymap assignments: %v", err)
         }
@@ -285,7 +305,7 @@ func readInstrument(reader *bufio.Reader) (*Instrument, error) {
 
         volumeEnvelopePoints := make([]uint16, 24)
         for i := range volumeEnvelopePoints {
-            err = binary.Read(reader, binary.LittleEndian, &volumeEnvelopePoints[i])
+            err = binary.Read(instrumentReader, binary.LittleEndian, &volumeEnvelopePoints[i])
             if err != nil {
                 return nil, fmt.Errorf("Error reading volume envelope points: %v", err)
             }
@@ -293,120 +313,133 @@ func readInstrument(reader *bufio.Reader) (*Instrument, error) {
 
         panningEnvelopePoints := make([]uint16, 24)
         for i := range panningEnvelopePoints {
-            err = binary.Read(reader, binary.LittleEndian, &panningEnvelopePoints[i])
+            err = binary.Read(instrumentReader, binary.LittleEndian, &panningEnvelopePoints[i])
             if err != nil {
                 return nil, fmt.Errorf("Error reading panning envelope points: %v", err)
             }
         }
 
-        volumePoints, err := reader.ReadByte()
+        volumePoints, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading volume points: %v", err)
         }
         log.Printf("Volume Points: %d", volumePoints)
 
-        panningPoints, err := reader.ReadByte()
+        panningPoints, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading panning points: %v", err)
         }
         log.Printf("Panning Points: %d", panningPoints)
 
-        volumeSustainPoint, err := reader.ReadByte()
+        volumeSustainPoint, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading volume sustain point: %v", err)
         }
         log.Printf("Volume Sustain Point: %d", volumeSustainPoint)
 
-        volumeLoopStart, err := reader.ReadByte()
+        volumeLoopStart, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading volume loop start: %v", err)
         }
 
         log.Printf("Volume Loop Start: %d", volumeLoopStart)
 
-        volumeLoopEnd, err := reader.ReadByte()
+        volumeLoopEnd, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading volume loop end: %v", err)
         }
 
         log.Printf("Volume Loop End: %d", volumeLoopEnd)
 
-        panningSustainPoint, err := reader.ReadByte()
+        panningSustainPoint, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading panning sustain point: %v", err)
         }
 
         log.Printf("Panning Sustain Point: %d", panningSustainPoint)
 
-        panningLoopStart, err := reader.ReadByte()
+        panningLoopStart, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading panning loop start: %v", err)
         }
 
         log.Printf("Panning Loop Start: %d", panningLoopStart)
 
-        panningLoopEnd, err := reader.ReadByte()
+        panningLoopEnd, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading panning loop end: %v", err)
         }
 
         log.Printf("Panning Loop End: %d", panningLoopEnd)
 
-        volumeType, err := reader.ReadByte()
+        volumeType, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading volume type: %v", err)
         }
 
         log.Printf("Volume Type: %d", volumeType)
 
-        panningType, err := reader.ReadByte()
+        panningType, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading panning type: %v", err)
         }
 
         log.Printf("Panning Type: %d", panningType)
 
-        vibratoType, err := reader.ReadByte()
+        vibratoType, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading vibrato type: %v", err)
         }
         log.Printf("Vibrato Type: %d", vibratoType)
 
-        vibratoSweep, err := reader.ReadByte()
+        vibratoSweep, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading vibrato sweep: %v", err)
         }
         log.Printf("Vibrato Sweep: %d", vibratoSweep)
 
-        vibratoDepth, err := reader.ReadByte()
+        vibratoDepth, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading vibrato depth: %v", err)
         }
 
         log.Printf("Vibrato Depth: %d", vibratoDepth)
 
-        vibratoRate, err := reader.ReadByte()
+        vibratoRate, err := instrumentReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading vibrato rate: %v", err)
         }
 
         log.Printf("Vibrato Rate: %d", vibratoRate)
 
-        var volume uint16
-        err = binary.Read(reader, binary.LittleEndian, &volume)
+        var volumeFadeOut uint16
+        err = binary.Read(instrumentReader, binary.LittleEndian, &volumeFadeOut)
         if err != nil {
             return nil, fmt.Errorf("Error reading volume: %v", err)
         }
 
-        log.Printf("Volume: %d", volume)
+        log.Printf("Volume: %d", volumeFadeOut)
 
-        reader.Discard(22) // reserved 22 bytes
+        instrumentReader.Discard(22) // reserved 22 bytes
     }
 
-    for range samples {
+    for {
+        _, err = instrumentReader.Discard(1)
+        if err != nil {
+            break
+        } else {
+            log.Printf("Extra byte in instrument header")
+        }
+    }
+
+    var sampleData []Sample
+
+    for i := range samples {
+
+        sampleReader := bufio.NewReader(io.LimitReader(reader_, int64(sampleHeaderSizes[i])))
 
         var sampleLength uint32
-        err = binary.Read(reader, binary.LittleEndian, &sampleLength)
+        err = binary.Read(sampleReader, binary.LittleEndian, &sampleLength)
         if err != nil {
             return nil, fmt.Errorf("Error reading sample length: %v", err)
         }
@@ -414,7 +447,7 @@ func readInstrument(reader *bufio.Reader) (*Instrument, error) {
         log.Printf("Sample Length: %d", sampleLength)
 
         var loopStart uint32
-        err = binary.Read(reader, binary.LittleEndian, &loopStart)
+        err = binary.Read(sampleReader, binary.LittleEndian, &loopStart)
         if err != nil {
             return nil, fmt.Errorf("Error reading loop start: %v", err)
         }
@@ -422,49 +455,49 @@ func readInstrument(reader *bufio.Reader) (*Instrument, error) {
         log.Printf("Loop Start: %d", loopStart)
 
         var loopLength uint32
-        err = binary.Read(reader, binary.LittleEndian, &loopLength)
+        err = binary.Read(sampleReader, binary.LittleEndian, &loopLength)
         if err != nil {
             return nil, fmt.Errorf("Error reading loop length: %v", err)
         }
 
         log.Printf("Loop Length: %d", loopLength)
 
-        volume, err := reader.ReadByte()
+        volume, err := sampleReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading sample volume: %v", err)
         }
 
         log.Printf("Sample Volume: %d", volume)
 
-        fineTune, err := reader.ReadByte()
+        fineTune, err := sampleReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading sample fine tune: %v", err)
         }
 
         log.Printf("Sample Fine Tune: %d", fineTune)
 
-        sampleType, err := reader.ReadByte()
+        sampleType, err := sampleReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading sample type: %v", err)
         }
 
         log.Printf("Sample Type: %d", sampleType)
 
-        panning, err := reader.ReadByte()
+        panning, err := sampleReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading sample panning: %v", err)
         }
 
         log.Printf("Sample Panning: %d", panning)
 
-        relativeNoteNumber, err := reader.ReadByte()
+        relativeNoteNumber, err := sampleReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading relative note number: %v", err)
         }
 
         log.Printf("Relative Note Number: %d", relativeNoteNumber)
 
-        compressionType, err := reader.ReadByte()
+        compressionType, err := sampleReader.ReadByte()
         if err != nil {
             return nil, fmt.Errorf("Error reading compression type: %v", err)
         }
@@ -472,7 +505,7 @@ func readInstrument(reader *bufio.Reader) (*Instrument, error) {
         log.Printf("Compression Type: %d", compressionType)
 
         sampleName := make([]byte, 22)
-        _, err = io.ReadFull(reader, sampleName)
+        _, err = io.ReadFull(sampleReader, sampleName)
         if err != nil {
             return nil, fmt.Errorf("Error reading sample name: %v", err)
         }
@@ -480,15 +513,63 @@ func readInstrument(reader *bufio.Reader) (*Instrument, error) {
         sampleName = bytes.TrimRight(sampleName, "\x00")
         log.Printf("Sample Name: '%s'", sampleName)
 
-        /*
-        for i := range 200 {
-            v, err := reader.ReadByte()
-            if err != nil {
-                return nil, fmt.Errorf("Error reading sample data: %v", err)
+        sampleData = append(sampleData, Sample{
+            Name: string(sampleName),
+            Length: sampleLength,
+            LoopStart: loopStart,
+            LoopLength: loopLength,
+            Volume: volume,
+            FineTune: int8(fineTune),
+            Type: sampleType,
+            Panning: panning,
+            RelativeNoteNumber: int8(relativeNoteNumber),
+            CompressionType: compressionType,
+        })
+    }
+
+    _, err = instrumentReader.Discard(1)
+    if !errors.Is(err, io.EOF) {
+        return nil, fmt.Errorf("Error discarding byte after sample data: %v", err)
+    }
+
+    for i := range sampleData {
+        sampleReader := bufio.NewReader(io.LimitReader(reader_, int64(sampleData[i].Length)))
+
+        is8Bit := sampleData[i].Type & 0b1000 == 0
+        if is8Bit {
+            log.Printf("Reading 8-bit sample data for sample %d", i)
+            numSamples := sampleData[i].Length
+
+            var last int8 = 0
+            for range numSamples {
+                v, err := sampleReader.ReadByte()
+                if err != nil {
+                    return nil, fmt.Errorf("Error reading 8-bit sample data: %v", err)
+                }
+
+                last += int8(v)
+                sampleData[i].Data = append(sampleData[i].Data, float32(last)/128.0)
             }
-            log.Printf("byte %d: 0x%x", i, v)
+
+        } else {
+            log.Printf("Reading 16-bit sample data for sample %d", i)
+            // 16-bit
+            numSamples := sampleData[i].Length / 2
+
+            var last int16 = 0
+            for range numSamples {
+                var v int16
+                err = binary.Read(sampleReader, binary.LittleEndian, &v)
+                if err != nil {
+                    return nil, fmt.Errorf("Error reading 16-bit sample data: %v", err)
+                }
+
+                last += int16(v)
+                sampleData[i].Data = append(sampleData[i].Data, float32(last)/32768.0)
+            }
+
         }
-        */
+
     }
 
     return &Instrument{}, nil
