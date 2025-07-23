@@ -100,6 +100,10 @@ type SystemInterface interface {
     SetGlobalVolume(int)
 }
 
+func ptr[T any](v T) *T {
+    return &v
+}
+
 // data is an array of float32 sample values representing the audio waveform, in stereo
 func renderScope(img *ebiten.Image, data []float32, stereo bool) {
     if len(data) == 0 {
@@ -165,7 +169,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         )
 
         titleContainer.AddChild(widget.NewText(
-            widget.TextOpts.Text("Load Song", face, color.White),
+            widget.TextOpts.Text("Load Song", &face, color.White),
             widget.TextOpts.WidgetOpts(widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
                 HorizontalPosition: widget.AnchorLayoutPositionCenter,
                 VerticalPosition: widget.AnchorLayoutPositionCenter,
@@ -182,27 +186,26 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
         fileList := widget.NewList(
             widget.ListOpts.Entries(entries),
-            widget.ListOpts.ScrollContainerOpts(
-                widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
+            widget.ListOpts.ScrollContainerImage(&widget.ScrollContainerImage{
                     Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 200}),
                     Mask: ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 255, B: 255, A: 200}),
                     Disabled: ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255}),
-                }),
-            ),
+            }),
             widget.ListOpts.HideHorizontalSlider(),
-            widget.ListOpts.EntryFontFace(face),
-            widget.ListOpts.SliderOpts(
-                widget.SliderOpts.Images(&widget.SliderTrackImage{
+            widget.ListOpts.EntryFontFace(&face),
+            widget.ListOpts.SliderParams(&widget.SliderParams{
+                TrackImage: &widget.SliderTrackImage{
                     Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
                     Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 64, G: 64, B: 64, A: 255}),
-                }, &widget.ButtonImage{
+                },
+                HandleImage: &widget.ButtonImage{
                     Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x70, G: 0x28, B: 0x0f, A: 255}),
                     Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x92, G: 0x34, B: 0x14, A: 255}),
                     Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0xc8, G: 0x47, B: 0x1b, A: 255}),
-                }),
-                widget.SliderOpts.MinHandleSize(20),
-                widget.SliderOpts.TrackPadding(widget.NewInsetsSimple(2)),
-            ),
+                },
+                MinHandleSize: ptr(20),
+                TrackPadding: widget.NewInsetsSimple(2),
+            }),
             widget.ListOpts.EntryColor(&widget.ListEntryColor{
                 Selected: color.NRGBA{R: 255, G: 255, B: 0, A: 255},
                 Unselected: color.White,
@@ -228,7 +231,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             widget.ContainerOpts.Layout(widget.NewRowLayout(
                 widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
                 widget.RowLayoutOpts.Spacing(10),
-                widget.RowLayoutOpts.Padding(widget.Insets{
+                widget.RowLayoutOpts.Padding(&widget.Insets{
                     Left: 40,
                 }),
             )),
@@ -236,14 +239,14 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
         closeButton := widget.NewButton(
             widget.ButtonOpts.Image(buttonImage),
-            widget.ButtonOpts.Text("Close", face, &widget.ButtonTextColor{
+            widget.ButtonOpts.Text("Close", &face, &widget.ButtonTextColor{
                 Idle: color.White,
             }),
             widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
                 windowActive = false
                 window.Close()
             }),
-            widget.ButtonOpts.TextPadding(widget.Insets{
+            widget.ButtonOpts.TextPadding(&widget.Insets{
                 Left: 50,
                 Top: 5,
                 Bottom: 5,
@@ -253,7 +256,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
         loadButton := widget.NewButton(
             widget.ButtonOpts.Image(buttonImage),
-            widget.ButtonOpts.Text("Load", face, &widget.ButtonTextColor{
+            widget.ButtonOpts.Text("Load", &face, &widget.ButtonTextColor{
                 Idle: color.White,
             }),
             widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
@@ -267,7 +270,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
                 }
 
             }),
-            widget.ButtonOpts.TextPadding(widget.Insets{
+            widget.ButtonOpts.TextPadding(&widget.Insets{
                 Left: 50,
                 Top: 5,
                 Right: 50,
@@ -301,7 +304,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         )
 
         paused.AddChild(widget.NewText(
-            widget.TextOpts.Text("Paused", face, color.White),
+            widget.TextOpts.Text("Paused", &face, color.White),
             widget.TextOpts.WidgetOpts(widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
                 HorizontalPosition: widget.AnchorLayoutPositionCenter,
                 VerticalPosition: widget.AnchorLayoutPositionCenter,
@@ -366,25 +369,25 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     )
 
     infoContainer.AddChild(widget.NewText(
-        widget.TextOpts.Text(fmt.Sprintf("Song name: %s", player.GetName()), face, color.White),
+        widget.TextOpts.Text(fmt.Sprintf("Song name: %s", player.GetName()), &face, color.White),
     ))
 
     orderText := widget.NewText(
-        widget.TextOpts.Text(fmt.Sprintf("Order: %v/%v", player.GetCurrentOrder(), player.GetSongLength()), face, color.White),
+        widget.TextOpts.Text(fmt.Sprintf("Order: %v/%v", player.GetCurrentOrder(), player.GetSongLength()), &face, color.White),
     )
 
     patternText := widget.NewText(
-        widget.TextOpts.Text(fmt.Sprintf("Pattern: %d", player.GetPattern()), face, color.White),
+        widget.TextOpts.Text(fmt.Sprintf("Pattern: %d", player.GetPattern()), &face, color.White),
     )
 
     speedText := widget.NewText(
-        widget.TextOpts.Text(fmt.Sprintf("Speed: %d BPM: %d", player.GetSpeed(), player.GetBPM()), face, color.White),
+        widget.TextOpts.Text(fmt.Sprintf("Speed: %d BPM: %d", player.GetSpeed(), player.GetBPM()), &face, color.White),
     )
 
     var timerText *widget.Text
     currentSeconds := 0
     timerText = widget.NewText(
-        widget.TextOpts.Text(fmt.Sprintf("Time: 0:00"), face, color.White),
+        widget.TextOpts.Text(fmt.Sprintf("Time: 0:00"), &face, color.White),
         widget.TextOpts.WidgetOpts(
             widget.WidgetOpts.OnUpdate(func (w widget.HasWidget){
                 select {
@@ -417,7 +420,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     )
 
     volumeLabel := widget.NewText(
-        widget.TextOpts.Text(fmt.Sprintf("Volume %v", system.GetGlobalVolume()), face, color.White),
+        widget.TextOpts.Text(fmt.Sprintf("Volume %v", system.GetGlobalVolume()), &face, color.White),
     )
 
     controlsContainer.AddChild(volumeLabel)
@@ -484,13 +487,13 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     )
     moreInfoContainer.AddChild(widget.NewButton(
         widget.ButtonOpts.Image(buttonImage),
-        widget.ButtonOpts.Text("(L)oad Song", face, &widget.ButtonTextColor{
+        widget.ButtonOpts.Text("(L)oad Song", &face, &widget.ButtonTextColor{
             Idle: color.White,
         }),
         widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
             showLoadWindow()
         }),
-        widget.ButtonOpts.TextPadding(widget.Insets{
+        widget.ButtonOpts.TextPadding(&widget.Insets{
             Left: 10,
             Top: 5,
             Bottom: 5,
@@ -500,13 +503,13 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     moreInfoContainer.AddChild(widget.NewButton(
         widget.ButtonOpts.Image(buttonImage),
-        widget.ButtonOpts.Text("(P)ause/Unpause", face, &widget.ButtonTextColor{
+        widget.ButtonOpts.Text("(P)ause/Unpause", &face, &widget.ButtonTextColor{
             Idle: color.White,
         }),
         widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
             doPause()
         }),
-        widget.ButtonOpts.TextPadding(widget.Insets{
+        widget.ButtonOpts.TextPadding(&widget.Insets{
             Left: 10,
             Top: 5,
             Bottom: 5,
@@ -557,21 +560,19 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             updateScopes = func() {
             }
         }
-
-        rootContainer.RequestRelayout()
     }
 
     setupOscilloscopes()
 
     moreInfoContainer.AddChild(widget.NewButton(
         widget.ButtonOpts.Image(buttonImage),
-        widget.ButtonOpts.Text("(T)oggle oscilloscopes", face, &widget.ButtonTextColor{
+        widget.ButtonOpts.Text("(T)oggle oscilloscopes", &face, &widget.ButtonTextColor{
             Idle: color.White,
         }),
         widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
             toggleOscilloscopes()
         }),
-        widget.ButtonOpts.TextPadding(widget.Insets{
+        widget.ButtonOpts.TextPadding(&widget.Insets{
             Left: 10,
             Top: 5,
             Bottom: 5,
@@ -581,7 +582,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
 
     moreInfoContainer.AddChild(widget.NewText(
-        widget.TextOpts.Text("Tracker by Jon Rafkind", face, color.White),
+        widget.TextOpts.Text("Tracker by Jon Rafkind", &face, color.White),
     ))
 
     moreInfoAnchor := widget.NewContainer(
@@ -627,7 +628,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         rowContainers = append(rowContainers, []*widget.Container{container})
 
         container.AddChild(widget.NewText(
-            widget.TextOpts.Text(fmt.Sprintf("%02X", i), face, textColor),
+            widget.TextOpts.Text(fmt.Sprintf("%02X", i), &face, textColor),
         ))
 
         rowNumbers.AddChild(container)
@@ -635,7 +636,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     for range 32 {
         rowNumbers.AddChild(widget.NewText(
-            widget.TextOpts.Text("-", face, color.White),
+            widget.TextOpts.Text("-", &face, color.White),
         ))
     }
 
@@ -671,7 +672,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
     )
     extraContainer.AddChild(widget.NewText(
-        widget.TextOpts.Text(" ", face, color.White),
+        widget.TextOpts.Text(" ", &face, color.White),
     ))
     extraContainer.AddChild(rowNumberScroller)
 
@@ -705,17 +706,17 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
         channelButton = widget.NewButton(
             widget.ButtonOpts.Image(unmutedImage),
-            widget.ButtonOpts.Text(fmt.Sprintf("Channel %d", i+1), face, &widget.ButtonTextColor{
+            widget.ButtonOpts.Text(fmt.Sprintf("Channel %d", i+1), &face, &widget.ButtonTextColor{
                 Idle: color.White,
             }),
             widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
                 if player.ToggleMuteChannel(i) {
-                    channelButton.Image = mutedImage
+                    widget.ButtonOpts.Image(mutedImage)(channelButton)
                 } else {
-                    channelButton.Image = unmutedImage
+                    widget.ButtonOpts.Image(unmutedImage)(channelButton)
                 }
             }),
-            widget.ButtonOpts.TextPadding(widget.Insets{
+            widget.ButtonOpts.TextPadding(&widget.Insets{
                 Left: 1,
                 Top: 1,
                 Bottom: 1,
@@ -799,7 +800,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
                 textContainer.AddChild(widget.NewText(
                     widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
-                    widget.TextOpts.Text(fmt.Sprintf("%v %v %v", noteName, sampleName, effectName), face, color.White),
+                    widget.TextOpts.Text(fmt.Sprintf("%v %v %v", noteName, sampleName, effectName), &face, color.White),
                 ))
 
                 rowContainers[row] = append(rowContainers[row], textContainer)
@@ -816,7 +817,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
                 textContainer.AddChild(widget.NewText(
                     widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
-                    widget.TextOpts.Text("-", face, color.White),
+                    widget.TextOpts.Text("-", &face, color.White),
                 ))
 
                 removeChannels = append(removeChannels, container.AddChild(textContainer))
@@ -847,11 +848,11 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
                 // log.Printf("Set scroll top to %v", rowScroll.ScrollTop)
 
                 for _, container := range rowContainers[currentRowHighlight] {
-                    container.BackgroundImage = nil
+                    widget.ContainerOpts.BackgroundImage(nil)(container)
                 }
                 currentRowHighlight = row
                 for _, container := range rowContainers[row] {
-                    container.BackgroundImage = ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128})
+                    widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128}))(container)
                 }
             }
         },

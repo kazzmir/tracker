@@ -18,7 +18,9 @@ import (
 
     "github.com/kazzmir/tracker/mod"
     "github.com/kazzmir/tracker/s3m"
+    "github.com/kazzmir/tracker/xm"
     "github.com/kazzmir/tracker/data"
+    "github.com/kazzmir/tracker/common"
 
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -353,6 +355,35 @@ func tryLoadMod(path string) (*mod.ModFile, error) {
     return mod.Load(file)
 }
 
+func tryLoadXM(path string) (*xm.XMFile, error) {
+    file, err := os.Open(path)
+    if err != nil {
+        return nil, err
+    }
+
+    defer file.Close()
+
+    return xm.Load(file)
+}
+
+func tryLoad(path string, sampleRate int) (TrackerPlayer, error) {
+    s3mFile, err := tryLoadS3m(path)
+    if err == nil {
+        return s3m.MakePlayer(s3mFile, sampleRate), nil
+    }
+
+    log.Printf("Unable to load s3m: %v", err)
+
+    xmFile, err := tryLoadXM(path)
+    if err == nil {
+        return xm.MakePlayer(xmFile, sampleRate), nil
+    }
+
+    log.Printf("Unable to load xm: %v", err)
+
+    modFile, err := tryLoadMod(path)
+    return mod.MakePlayer(modFile, sampleRate), nil
+}
 
 func runGui(player TrackerPlayer, sampleRate int, quit context.Context) error {
     fps := 30
@@ -410,6 +441,7 @@ func main(){
         defer pprof.StopCPUProfile()
     }
 
+    var player TrackerPlayer = &common.DummyPlayer{}
     quit, cancel := context.WithCancel(context.Background())
     defer cancel()
     signalChan := make(chan os.Signal, 2)
@@ -419,28 +451,16 @@ func main(){
     }()
     signal.Notify(signalChan, os.Interrupt)
 
-    var player TrackerPlayer = &DummyPlayer{}
-
     sampleRate := 44100
 
     if len(flag.Args()) > 0 {
         path := flag.Args()[0]
 
-        s3mFile, err := tryLoadS3m(path)
+        var err error
+        player, err = tryLoad(path, sampleRate)
         if err != nil {
-            log.Printf("Unable to load s3m: %v", err)
-
-            modFile, err := tryLoadMod(path)
-            if err != nil {
-                log.Printf("Error loading %v: %v", path, err)
-                return
-            } else {
-                player = mod.MakePlayer(modFile, sampleRate)
-                log.Printf("Successfully loaded %v", path)
-                log.Printf("Mod name: '%v'", modFile.Name)
-            }
-        } else {
-            player = s3m.MakePlayer(s3mFile, sampleRate)
+            log.Printf("Error loading module: %v", err)
+            return
         }
     } else {
         /*
