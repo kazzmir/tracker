@@ -11,6 +11,13 @@ import (
 )
 
 type XMFile struct {
+    Instruments []*Instrument
+    Patterns []Pattern
+}
+
+type Pattern struct {
+    Rows uint16
+    PatternData []byte // packed data
 }
 
 type Instrument struct {
@@ -191,54 +198,17 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
 
     reader = bufio.NewReader(reader_)
 
+    var patterns []Pattern
+
     for i := range patternCount {
-        log.Printf("Reading pattern %d", i)
-
-        var patternHeaderSize uint32
-        err = binary.Read(reader, binary.LittleEndian, &patternHeaderSize)
+        pattern, err := readPattern(reader, maximumFileSize, int(i))
         if err != nil {
-            return nil, fmt.Errorf("Error reading pattern header size: %v", err)
+            return nil, fmt.Errorf("Error reading pattern %d: %v", i, err)
         }
-        // log.Printf("Pattern Header Size: %d", patternHeaderSize)
-
-        if int64(patternHeaderSize) > maximumFileSize {
-            return nil, fmt.Errorf("Pattern header size exceeds maximum file size: %d > %d", patternHeaderSize, maximumFileSize)
-        }
-
-        _, err = reader.Discard(1)
-        if err != nil {
-            return nil, fmt.Errorf("Error discarding byte: %v", err)
-        }
-
-        var rows uint16
-        err = binary.Read(reader, binary.LittleEndian, &rows)
-        if err != nil {
-            return nil, fmt.Errorf("Error reading rows: %v", err)
-        }
-
-        log.Printf("Rows: %d", rows)
-
-        if rows < 1 || rows > 256 {
-            return nil, fmt.Errorf("Rows must be between 1 and 256, got %d", rows)
-        }
-
-        var packedSize uint16
-        err = binary.Read(reader, binary.LittleEndian, &packedSize)
-        if err != nil {
-            return nil, fmt.Errorf("Error reading packed size: %v", err)
-        }
-
-        // log.Printf("Packed Size: %d", packedSize)
-        if packedSize > 0 {
-            patternData := make([]byte, packedSize)
-            _, err = io.ReadFull(reader, patternData)
-            if err != nil {
-                return nil, fmt.Errorf("Error reading pattern data: %v", err)
-            }
-        } else {
-            log.Printf("Empty pattern..")
-        }
+        patterns = append(patterns, pattern)
     }
+
+    var instruments []*Instrument
 
     for i := range instrumentCount {
         log.Printf("Reading instrument %d", i)
@@ -254,10 +224,68 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
             return nil, fmt.Errorf("Error reading instrument %d: %v", i, err)
         }
 
-        _ = instrument
+        instruments = append(instruments, instrument)
     }
 
-    return &XMFile{}, nil
+    return &XMFile{
+        Instruments: instruments,
+        Patterns: patterns,
+    }, nil
+}
+
+func readPattern(reader *bufio.Reader, maximumFileSize int64, patternIndex int) (Pattern, error) {
+    log.Printf("Reading pattern %d", patternIndex)
+
+    var patternHeaderSize uint32
+    err := binary.Read(reader, binary.LittleEndian, &patternHeaderSize)
+    if err != nil {
+        return Pattern{}, fmt.Errorf("Error reading pattern header size: %v", err)
+    }
+    // log.Printf("Pattern Header Size: %d", patternHeaderSize)
+
+    if int64(patternHeaderSize) > maximumFileSize {
+        return Pattern{}, fmt.Errorf("Pattern header size exceeds maximum file size: %d > %d", patternHeaderSize, maximumFileSize)
+    }
+
+    _, err = reader.Discard(1)
+    if err != nil {
+        return Pattern{}, fmt.Errorf("Error discarding byte: %v", err)
+    }
+
+    var rows uint16
+    err = binary.Read(reader, binary.LittleEndian, &rows)
+    if err != nil {
+        return Pattern{}, fmt.Errorf("Error reading rows: %v", err)
+    }
+
+    log.Printf("Rows: %d", rows)
+
+    if rows < 1 || rows > 256 {
+        return Pattern{}, fmt.Errorf("Rows must be between 1 and 256, got %d", rows)
+    }
+
+    var packedSize uint16
+    err = binary.Read(reader, binary.LittleEndian, &packedSize)
+    if err != nil {
+        return Pattern{}, fmt.Errorf("Error reading packed size: %v", err)
+    }
+
+    // log.Printf("Packed Size: %d", packedSize)
+    if packedSize > 0 {
+        patternData := make([]byte, packedSize)
+        _, err = io.ReadFull(reader, patternData)
+        if err != nil {
+            return Pattern{}, fmt.Errorf("Error reading pattern data: %v", err)
+        }
+
+        return Pattern{
+            Rows: rows,
+            PatternData: patternData,
+        }, nil
+    } else {
+        log.Printf("Empty pattern..")
+        return Pattern{}, nil
+    }
 }
 
 func readInstrument(reader_ io.Reader, instrumentHeaderSize uint32) (*Instrument, error) {
@@ -537,8 +565,8 @@ func readInstrument(reader_ io.Reader, instrumentHeaderSize uint32) (*Instrument
 
         is8Bit := sampleData[i].Type & 0b1000 == 0
         if is8Bit {
-            log.Printf("Reading 8-bit sample data for sample %d", i)
             numSamples := sampleData[i].Length
+            log.Printf("Reading 8-bit sample data for sample %d, samples %d", i, numSamples)
 
             var last int8 = 0
             for range numSamples {
@@ -552,9 +580,9 @@ func readInstrument(reader_ io.Reader, instrumentHeaderSize uint32) (*Instrument
             }
 
         } else {
-            log.Printf("Reading 16-bit sample data for sample %d", i)
             // 16-bit
             numSamples := sampleData[i].Length / 2
+            log.Printf("Reading 16-bit sample data for sample %d samples %d", i, numSamples)
 
             var last int16 = 0
             for range numSamples {
