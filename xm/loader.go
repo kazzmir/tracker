@@ -15,6 +15,14 @@ type XMFile struct {
     Patterns []Pattern
 }
 
+type Note struct {
+    NoteNumber uint8 // 0-97
+    Instrument uint8
+    Volume uint8
+    EffectType uint8 // 0-15
+    EffectParameter uint8 // 0-255
+}
+
 type Pattern struct {
     Rows uint16
     PatternData []byte // packed data
@@ -36,6 +44,107 @@ type Sample struct {
     CompressionType uint8
 
     Data []float32
+}
+
+func (pattern *Pattern) ParseNotes() []Note {
+    var notes []Note
+
+    reader := bytes.NewReader(pattern.PatternData)
+
+    for {
+        value, err := reader.ReadByte()
+        if err != nil {
+            break
+        }
+
+        var noteNumber uint8
+        var instrument uint8
+        var volume uint8
+        var effectType uint8
+        var effectParameter uint8
+
+        noteFollows := true
+        instrumentFollows := true
+        volumeFollows := true
+        effectFollows := true
+        effectParameterFollows := true
+
+        if value & 0x80 != 0 {
+            noteFollows = value & 0b0001 != 0
+            instrumentFollows = value & 0b0010 != 0
+            volumeFollows = value & 0b0100 != 0
+            effectFollows = value & 0b1000 != 0
+            effectParameterFollows = value & 0b10000 != 0
+        }
+
+        if noteFollows {
+            noteNumber, err = reader.ReadByte()
+            if err != nil {
+                log.Printf("Error reading note number: %v", err)
+                break
+            }
+        }
+
+        if instrumentFollows {
+            instrument, err = reader.ReadByte()
+            if err != nil {
+                log.Printf("Error reading instrument: %v", err)
+                break
+            }
+        } else {
+            instrument = 0
+        }
+
+        if volumeFollows {
+            volume, err = reader.ReadByte()
+            if err != nil {
+                log.Printf("Error reading volume: %v", err)
+                break
+            }
+        } else {
+            volume = 0
+        }
+
+        if effectFollows {
+            effectType, err = reader.ReadByte()
+            if err != nil {
+                log.Printf("Error reading effect type: %v", err)
+                break
+            }
+        } else {
+            effectType = 0
+        }
+
+        if effectParameterFollows {
+            effectParameter, err = reader.ReadByte()
+            if err != nil {
+                log.Printf("Error reading effect parameter: %v", err)
+                break
+            }
+        } else {
+            effectParameter = 0
+        }
+
+        notes = append(notes, Note{
+            NoteNumber: noteNumber,
+            Instrument: instrument,
+            Volume: volume,
+            EffectType: effectType,
+            EffectParameter: effectParameter,
+        })
+    }
+
+    return notes
+}
+
+func (pattern *Pattern) GetRow(row int) []Note {
+    var notes []Note
+
+    if row < 0 || row >= int(pattern.Rows) {
+        return nil
+    }
+
+    return notes
 }
 
 func Load(reader_ io.ReadSeeker) (*XMFile, error) {
@@ -206,6 +315,9 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
             return nil, fmt.Errorf("Error reading pattern %d: %v", i, err)
         }
         patterns = append(patterns, pattern)
+
+        notes := pattern.ParseNotes()
+        log.Printf("Pattern %d notes: %d", i, len(notes))
     }
 
     var instruments []*Instrument
