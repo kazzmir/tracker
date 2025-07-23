@@ -272,15 +272,17 @@ func readPattern(reader *bufio.Reader, maximumFileSize int64, patternIndex int) 
 
     // log.Printf("Packed Size: %d", packedSize)
     if packedSize > 0 {
-        patternData := make([]byte, packedSize)
-        _, err = io.ReadFull(reader, patternData)
+        var buffer bytes.Buffer
+        // patternData := make([]byte, packedSize)
+        // _, err = io.ReadFull(reader, patternData)
+        _, err := io.CopyN(&buffer, reader, int64(packedSize))
         if err != nil {
             return Pattern{}, fmt.Errorf("Error reading pattern data: %v", err)
         }
 
         return Pattern{
             Rows: rows,
-            PatternData: patternData,
+            PatternData: buffer.Bytes(),
         }, nil
     } else {
         log.Printf("Empty pattern..")
