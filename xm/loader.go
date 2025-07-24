@@ -10,6 +10,32 @@ import (
     "errors"
 )
 
+const (
+    EffectArpeggio = 0
+    EffectPortamentoUp = 1
+    EffectPortamentoDown = 2
+    EffectTonePortamento = 3
+    EffectVibrato = 4
+    EffectTonePortamentoVolumeSlide = 5
+    EffectVibratoVolumeSlide = 6
+    EffectTremolo = 7
+    EffectSetPanning = 8
+    EffectSetSampleOffset = 9
+    EffectVolumeSlide = 10
+    EffectPositionJump = 11
+    EffectSetVolume = 12
+    EffectPatternBreak = 13
+    EffectExtended = 14
+    EffectSetSpeed = 15
+    EffectSetGlobalVolume = 16
+    EffectSetGlobalVolumeSlide = 17
+    EffectEnvelopePosition = 21
+    EffectPanningSlide = 25
+    EffectMultiRetrigger = 27
+    EffectTremor = 29
+    EffectExtraFinePortamento = 33
+)
+
 type XMFile struct {
     Orders []byte
     Instruments []*Instrument
@@ -53,10 +79,45 @@ func (note *Note) GetNoteName() string {
     return fmt.Sprintf("%s%d", noteNames[noteIndex], octave)
 }
 
+func (note *Note) GetEffectName() string {
+    effects := []string{
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+        "A", "B", "C", "D", "E", "F", "G", "H", "I", "J",
+        "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
+        "U", "V", "W", "X", "Y", "Z",
+        "X", // extra fine portamento is 33
+    }
+
+    if int(note.EffectType) < len(effects) {
+        return effects[note.EffectType]
+    }
+
+    return "?"
+}
+
 func (note *Note) String() string {
     var out bytes.Buffer
 
     out.WriteString(note.GetNoteName())
+    if note.HasInstrument {
+        out.WriteString(fmt.Sprintf(" %02d", note.Instrument))
+    } else {
+        out.WriteString(" --")
+    }
+
+    if note.HasVolume {
+        out.WriteString(fmt.Sprintf("v%02d", note.Volume))
+    } else {
+        out.WriteString("v--")
+    }
+
+    if note.HasEffectType {
+        out.WriteString(" ")
+        out.WriteString(note.GetEffectName())
+        out.WriteString(fmt.Sprintf("%02X", note.EffectParameter))
+    } else {
+        out.WriteString(" ---")
+    }
 
     return out.String()
 }
@@ -64,6 +125,8 @@ func (note *Note) String() string {
 type Pattern struct {
     Rows uint16
     PatternData []byte // packed data
+
+    parsedNotes []Note
 }
 
 type Instrument struct {
@@ -198,12 +261,14 @@ func (pattern *Pattern) GetRow(row int, channels int) []Note {
         return nil
     }
 
-    rows := pattern.ParseNotes()
+    if len(pattern.parsedNotes) == 0 {
+        pattern.parsedNotes = pattern.ParseNotes()
+    }
 
     rowStart := row * channels
     rowEnd := rowStart + channels
 
-    return rows[rowStart:rowEnd]
+    return pattern.parsedNotes[rowStart:rowEnd]
 }
 
 func Load(reader_ io.ReadSeeker) (*XMFile, error) {
