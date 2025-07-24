@@ -1,6 +1,8 @@
 package xm
 
 import (
+    "log"
+    "bytes"
     "github.com/kazzmir/tracker/common"
 )
 
@@ -33,6 +35,28 @@ RenderToPCM() io.Reader
 */
 
 func MakePlayer(file *XMFile, sampleRate int) *Player {
+
+    pattern := file.Patterns[0]
+    /*
+    notes := pattern.ParseNotes()
+    for i, note := range notes {
+        log.Printf("Note: %d, %+v", i, note)
+        if i > 20 {
+            break
+        }
+    }
+    */
+    for i := range pattern.Rows {
+        row := pattern.GetRow(int(i), file.Channels)
+        var notes bytes.Buffer
+        for noteIndex := range row {
+            notes.WriteString(row[noteIndex].String())
+            notes.WriteString(" ")
+        }
+        log.Printf("Row %02d: %s", i, notes.String())
+        // log.Printf("Raw: %+v", row)
+    }
+
     player := &Player{
     }
 

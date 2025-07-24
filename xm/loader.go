@@ -11,16 +11,54 @@ import (
 )
 
 type XMFile struct {
+    Orders []byte
     Instruments []*Instrument
     Patterns []Pattern
+    Channels int // number of channels in the song
 }
 
 type Note struct {
     NoteNumber uint8 // 0-97
+    HasNote bool
     Instrument uint8
+    HasInstrument bool
     Volume uint8
+    HasVolume bool
     EffectType uint8 // 0-15
+    HasEffectType bool
     EffectParameter uint8 // 0-255
+    HasEffectParameter bool
+}
+
+func (note *Note) GetNoteName() string {
+    // 1 is c-1
+    // 12 is b-1
+    // 13 is c-2
+
+    if !note.HasNote {
+        return "---"
+    }
+
+    noteNames := []string{
+        "C-", "C#","D-", "D#","E-","F-","F#","G-","G#","A-","A#","B-",
+    }
+
+    noteIndex := int(note.NoteNumber-1) % 12
+    octave := (int(note.NoteNumber-1) / 12) + 1
+
+    if noteIndex < 0 || noteIndex >= len(noteNames) {
+        return "---"
+    }
+
+    return fmt.Sprintf("%s%d", noteNames[noteIndex], octave)
+}
+
+func (note *Note) String() string {
+    var out bytes.Buffer
+
+    out.WriteString(note.GetNoteName())
+
+    return out.String()
 }
 
 type Pattern struct {
@@ -57,17 +95,15 @@ func (pattern *Pattern) ParseNotes() []Note {
             break
         }
 
-        var noteNumber uint8
-        var instrument uint8
-        var volume uint8
-        var effectType uint8
-        var effectParameter uint8
-
         noteFollows := true
         instrumentFollows := true
         volumeFollows := true
         effectFollows := true
         effectParameterFollows := true
+
+        var note Note
+
+        noteByte := value
 
         if value & 0x80 != 0 {
             noteFollows = value & 0b0001 != 0
@@ -75,76 +111,99 @@ func (pattern *Pattern) ParseNotes() []Note {
             volumeFollows = value & 0b0100 != 0
             effectFollows = value & 0b1000 != 0
             effectParameterFollows = value & 0b10000 != 0
-        }
 
-        if noteFollows {
-            noteNumber, err = reader.ReadByte()
-            if err != nil {
-                log.Printf("Error reading note number: %v", err)
-                break
+            if noteFollows {
+                noteByte, err = reader.ReadByte()
+                if err != nil {
+                    log.Printf("Error reading note byte: %v", err)
+                    break
+                }
             }
         }
 
+        if noteFollows {
+            note.HasNote = true
+            note.NoteNumber = noteByte
+        }
+
         if instrumentFollows {
-            instrument, err = reader.ReadByte()
+            instrument, err := reader.ReadByte()
             if err != nil {
                 log.Printf("Error reading instrument: %v", err)
                 break
             }
-        } else {
-            instrument = 0
+
+            note.HasInstrument = true
+            note.Instrument = instrument
         }
 
         if volumeFollows {
-            volume, err = reader.ReadByte()
+            volume, err := reader.ReadByte()
             if err != nil {
                 log.Printf("Error reading volume: %v", err)
                 break
             }
-        } else {
-            volume = 0
+
+            note.HasVolume = true
+            note.Volume = volume
         }
 
         if effectFollows {
-            effectType, err = reader.ReadByte()
+            effectType, err := reader.ReadByte()
             if err != nil {
                 log.Printf("Error reading effect type: %v", err)
                 break
             }
-        } else {
-            effectType = 0
+            note.HasEffectType = true
+            note.EffectType = effectType
         }
 
         if effectParameterFollows {
-            effectParameter, err = reader.ReadByte()
+            effectParameter, err := reader.ReadByte()
             if err != nil {
                 log.Printf("Error reading effect parameter: %v", err)
                 break
             }
-        } else {
-            effectParameter = 0
+            note.HasEffectParameter = true
+            note.EffectParameter = effectParameter
         }
 
-        notes = append(notes, Note{
-            NoteNumber: noteNumber,
-            Instrument: instrument,
-            Volume: volume,
-            EffectType: effectType,
-            EffectParameter: effectParameter,
-        })
+        notes = append(notes, note)
     }
 
     return notes
 }
 
-func (pattern *Pattern) GetRow(row int) []Note {
-    var notes []Note
+/*
+func (pattern *Pattern) GetRows(channels int) [][]Note {
+    notes := pattern.ParseNotes()
+    var rows [][]Note
+    var currentRow []Note
 
+    for i := range notes {
+        currentRow = append(currentRow, notes[i])
+
+        if len(currentRow) == channels {
+            rows = append(rows, currentRow)
+            currentRow = []Note{}
+        }
+    }
+
+    return rows
+}
+*/
+
+func (pattern *Pattern) GetRow(row int, channels int) []Note {
     if row < 0 || row >= int(pattern.Rows) {
         return nil
     }
 
-    return notes
+    rows := pattern.ParseNotes()
+
+    rowStart := row * channels
+    rowEnd := rowStart + channels
+
+    return rows[rowStart:rowEnd]
 }
 
 func Load(reader_ io.ReadSeeker) (*XMFile, error) {
@@ -340,8 +399,10 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
     }
 
     return &XMFile{
+        Orders: orderData,
         Instruments: instruments,
         Patterns: patterns,
+        Channels: int(channelCount),
     }, nil
 }
 
