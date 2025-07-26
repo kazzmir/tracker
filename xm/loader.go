@@ -37,6 +37,7 @@ const (
 )
 
 type XMFile struct {
+    Name string
     Orders []byte
     Instruments []*Instrument
     Patterns []Pattern
@@ -464,6 +465,7 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
     }
 
     return &XMFile{
+        Name: string(moduleName),
         Orders: orderData,
         Instruments: instruments,
         Patterns: patterns,
