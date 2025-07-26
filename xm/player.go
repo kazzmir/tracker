@@ -18,9 +18,26 @@ type Channel struct {
     buffer []float32
     currentRow int // The row that is currently being played
     Mute bool
+
+    CurrentVolume float32 // The volume of the current note
+    CurrentPeriod int
+    CurrentInstrument int
 }
 
 func (channel *Channel) UpdateRow() {
+    channel.currentRow = channel.player.CurrentRow
+
+    note := channel.player.GetRowNote(channel.Channel, channel.currentRow)
+
+    if note.HasVolume {
+        channel.CurrentVolume = float32(note.Volume - 16) / 64.0
+    }
+    if note.HasNote {
+        channel.CurrentPeriod = int(note.NoteNumber)
+    }
+    if note.HasInstrument {
+        channel.CurrentInstrument = int(note.Instrument)
+    }
 }
 
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
@@ -120,11 +137,6 @@ IsStereo() bool
 NextOrder()
 PreviousOrder()
 ResetRow()
-GetCurrentOrder() int
-SetOnChangeRow(func(int))
-SetOnChangeOrder(func(int, int))
-SetOnChangeSpeed(func(int, int))
-GetChannelReaders() []io.Reader
 RenderToPCM() io.Reader
 */
 
@@ -231,4 +243,30 @@ func (player *Player) GetName() string {
     }
 
     return ""
+}
+
+func (player *Player) GetRowNote(channel int, row int) *Note {
+    pattern := player.XMFile.GetPattern(player.Order)
+    notes := pattern.GetRow(row, player.XMFile.Channels)
+    if channel < 0 || channel >= len(notes) {
+        return nil
+    }
+
+    return &notes[channel]
+}
+
+func (player *Player) GetCurrentOrder() int {
+    return player.Order
+}
+
+func (player *Player) SetOnChangeRow(f func(int)) {
+    player.OnChangeRow = f
+}
+
+func (player *Player) SetOnChangeOrder(f func(int, int)) {
+    player.OnChangeOrder = f
+}
+
+func (player *Player) SetOnChangeSpeed(f func(int, int)) {
+    player.OnChangeSpeed = f
 }

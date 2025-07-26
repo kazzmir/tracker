@@ -57,6 +57,14 @@ type Note struct {
     HasEffectParameter bool
 }
 
+func (file *XMFile) GetPattern(order int) *Pattern {
+    if order < 0 || order >= len(file.Orders) {
+        return nil
+    }
+
+    return &file.Patterns[file.Orders[order]]
+}
+
 func (note *Note) GetNoteName() string {
     // 1 is c-1
     // 12 is b-1
@@ -256,6 +264,7 @@ func (pattern *Pattern) GetRows(channels int) [][]Note {
     return rows
 }
 */
+
 
 func (pattern *Pattern) GetRow(row int, channels int) []Note {
     if row < 0 || row >= int(pattern.Rows) {
