@@ -848,11 +848,11 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
                 // log.Printf("Set scroll top to %v", rowScroll.ScrollTop)
 
                 for _, container := range rowContainers[currentRowHighlight] {
-                    widget.ContainerOpts.BackgroundImage(nil)(container)
+                    container.SetBackgroundImage(nil)
                 }
                 currentRowHighlight = row
                 for _, container := range rowContainers[row] {
-                    widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128}))(container)
+                    container.SetBackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128}))
                 }
             }
         },
