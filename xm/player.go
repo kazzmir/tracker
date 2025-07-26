@@ -28,6 +28,9 @@ func (channel *Channel) UpdateRow() {
     channel.currentRow = channel.player.CurrentRow
 
     note := channel.player.GetRowNote(channel.Channel, channel.currentRow)
+    if note == nil {
+        return
+    }
 
     if note.HasVolume {
         channel.CurrentVolume = float32(note.Volume - 16) / 64.0
@@ -126,17 +129,6 @@ type Player struct {
 }
 
 /*
-GetCurrentOrder() int
-GetPattern() int
-GetSongLength() int
-GetChannelCount() int
-GetRowNoteInfo(channel int, row int) common.NoteInfo
-GetChannelData(channel int, data []float32) int
-ToggleMuteChannel(channel int) bool
-IsStereo() bool
-NextOrder()
-PreviousOrder()
-ResetRow()
 RenderToPCM() io.Reader
 */
 
@@ -255,6 +247,15 @@ func (player *Player) GetRowNote(channel int, row int) *Note {
     return &notes[channel]
 }
 
+func (player *Player) GetRowNoteInfo(channel int, row int) common.NoteInfo {
+    note := player.GetRowNote(channel, row)
+    if note == nil {
+        return nil
+    }
+
+    return note
+}
+
 func (player *Player) GetCurrentOrder() int {
     return player.Order
 }
@@ -269,4 +270,60 @@ func (player *Player) SetOnChangeOrder(f func(int, int)) {
 
 func (player *Player) SetOnChangeSpeed(f func(int, int)) {
     player.OnChangeSpeed = f
+}
+
+func (player *Player) GetChannelCount() int {
+    return len(player.Channels)
+}
+
+func (player *Player) GetPattern() int {
+    return int(player.XMFile.Orders[player.Order])
+}
+
+func (player *Player) GetSongLength() int {
+    return len(player.XMFile.Orders)
+}
+
+func (player *Player) IsStereo() bool {
+    // Assuming XM files are always stereo
+    return true
+}
+
+func (player *Player) ToggleMuteChannel(channel int) bool {
+    player.Channels[channel].Mute = !player.Channels[channel].Mute
+    return player.Channels[channel].Mute
+}
+
+func (player *Player) NextOrder() {
+    player.Order += 1
+    if player.Order >= player.GetSongLength() {
+        player.Order = 0
+    }
+
+    if player.OnChangeOrder != nil {
+        player.OnChangeOrder(player.Order, player.GetPattern())
+    }
+}
+
+func (player *Player) PreviousOrder() {
+    player.Order -= 1
+    if player.Order < 0 {
+        player.Order = player.GetSongLength() - 1
+    }
+
+    if player.OnChangeOrder != nil {
+        player.OnChangeOrder(player.Order, player.GetPattern())
+    }
+}
+
+func (player *Player) GetChannelData(channel int, data []float32) int {
+    if channel < len(player.Channels) {
+        return player.Channels[channel].ScopeBuffer.Peek(data)
+    }
+
+    return 0
+}
+
+func (player *Player) ResetRow() {
+    player.CurrentRow = 0
 }

@@ -44,6 +44,14 @@ type XMFile struct {
     Channels int // number of channels in the song
 }
 
+func (file *XMFile) GetPattern(order int) *Pattern {
+    if order < 0 || order >= len(file.Orders) {
+        return nil
+    }
+
+    return &file.Patterns[file.Orders[order]]
+}
+
 type Note struct {
     NoteNumber uint8 // 0-97
     HasNote bool
@@ -57,12 +65,15 @@ type Note struct {
     HasEffectParameter bool
 }
 
-func (file *XMFile) GetPattern(order int) *Pattern {
-    if order < 0 || order >= len(file.Orders) {
-        return nil
-    }
+func (note *Note) GetName() string {
+    return note.GetNoteName()
+}
 
-    return &file.Patterns[file.Orders[order]]
+func (note *Note) GetSampleName() string {
+    if note.HasInstrument {
+        return fmt.Sprintf(" %02d", note.Instrument)
+    }
+    return "--"
 }
 
 func (note *Note) GetNoteName() string {
