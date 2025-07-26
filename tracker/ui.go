@@ -710,11 +710,13 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
                 Idle: color.White,
             }),
             widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
+                // FIXME: replace this with channelButton.SetImage()
                 if player.ToggleMuteChannel(i) {
                     widget.ButtonOpts.Image(mutedImage)(channelButton)
                 } else {
                     widget.ButtonOpts.Image(unmutedImage)(channelButton)
                 }
+                channelButton.Validate()
             }),
             widget.ButtonOpts.TextPadding(&widget.Insets{
                 Left: 1,

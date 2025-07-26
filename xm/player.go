@@ -5,7 +5,6 @@ import (
     "math"
     "runtime"
     "io"
-    "bytes"
     "github.com/kazzmir/tracker/common"
 )
 
@@ -120,6 +119,7 @@ type Player struct {
     CurrentRow int
     BPM int
     Speed int
+    OrdersPlayed int // How many orders have been played so far
 
     Channels []*Channel
 
@@ -135,8 +135,8 @@ RenderToPCM() io.Reader
 
 func MakePlayer(file *XMFile, sampleRate int) *Player {
 
-    pattern := file.Patterns[0]
     /*
+    pattern := file.Patterns[0]
     notes := pattern.ParseNotes()
     for i, note := range notes {
         log.Printf("Note: %d, %+v", i, note)
@@ -144,7 +144,6 @@ func MakePlayer(file *XMFile, sampleRate int) *Player {
             break
         }
     }
-    */
     for i := range pattern.Rows {
         row := pattern.GetRow(int(i), file.Channels)
         var notes bytes.Buffer
@@ -155,6 +154,7 @@ func MakePlayer(file *XMFile, sampleRate int) *Player {
         log.Printf("Row %02d: %s", i, notes.String())
         // log.Printf("Raw: %+v", row)
     }
+    */
 
     player := &Player{
         XMFile: file,
@@ -197,6 +197,23 @@ func (player *Player) Update(timeDelta float32) {
             player.OnChangeRow(player.CurrentRow)
         }
     }
+
+    if player.CurrentRow >= int(player.XMFile.Patterns[0].Rows) {
+        // player.rowPosition = 0
+        player.CurrentRow = 0
+        player.Order += 1
+        player.OrdersPlayed += 1
+        if player.Order >= player.GetSongLength() {
+            player.Order = 0
+        }
+
+        if player.OnChangeOrder != nil {
+            player.OnChangeOrder(player.Order, player.GetPattern())
+        }
+
+        log.Printf("order %v next pattern: %v", player.Order, player.GetPattern())
+    }
+
 
     for _, channel := range player.Channels {
         changeRow := false
