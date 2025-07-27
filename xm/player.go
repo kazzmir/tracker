@@ -68,6 +68,9 @@ type Channel struct {
 
     PortamentoTarget float32
     VolumeSlide int
+
+    RetriggerValue int
+    RetriggerCount int
 }
 
 func (channel *Channel) GetLeftPan() float32 {
@@ -147,6 +150,12 @@ func (channel *Channel) UpdateRow() {
                 newNote = channel.CurrentNote
                 newInstrument = channel.CurrentInstrument
                 resetStartingPosition = false
+            case EffectMultiRetrigger:
+                channel.CurrentEffect = EffectMultiRetrigger
+                if note.EffectParameter > 0 {
+                    channel.RetriggerValue = int(note.EffectParameter)
+                }
+                channel.RetriggerCount = 0
             case EffectExtended:
                 channel.CurrentEffect = EffectExtended
                 channel.CurrentEffectParameter = int(note.EffectParameter)
@@ -230,6 +239,12 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
     const portamentoSlide = 10.2
 
     switch channel.CurrentEffect {
+        case EffectMultiRetrigger:
+            channel.RetriggerCount += ticks
+            if channel.RetriggerCount >= channel.RetriggerValue {
+                channel.startPosition = 0
+                channel.RetriggerCount -= channel.RetriggerValue
+            }
         case EffectVolumeSlide:
             channel.doVolumeSlide()
         case EffectPortamentoUp:
