@@ -108,6 +108,7 @@ type Channel struct {
     CurrentEffect int
     CurrentEffectParameter int // The parameter of the current effect
     CurrentVolume float32 // The volume of the current note
+    LastVolume float32
     CurrentNote float32
     CurrentInstrument int
 
@@ -144,16 +145,29 @@ func (channel *Channel) UpdateRow() {
     newNote := channel.CurrentNote
     newInstrument := channel.CurrentInstrument
 
-    if note.HasVolume {
-        channel.CurrentVolume = float32(note.Volume) - 16
+    channel.CurrentEffect = -1
+
+    /*
+    if channel.Channel == 0 {
+        log.Printf("Channel %v: note %+v", channel.Channel, note)
     }
+    */
+
     if note.HasNote {
         newNote = float32(note.NoteNumber)
         if note.NoteNumber == 97 {
             newNote = 0 // No note
         }
         resetStartingPosition = true
+        channel.LastVolume = 64
+        channel.CurrentVolume = channel.LastVolume
     }
+
+    if note.HasVolume {
+        channel.LastVolume = float32(note.Volume) - 16
+        channel.CurrentVolume = channel.LastVolume
+    }
+
     if note.HasInstrument {
         newInstrument = int(note.Instrument - 1)
         // log.Printf("Set instrument to %v", channel.CurrentInstrument)
@@ -606,8 +620,11 @@ func MakePlayer(file *XMFile, sampleRate int) *Player {
         })
     }
 
-    // player.Order = 2
-    // player.Channels = player.Channels[6:7]
+    /*
+    player.Order = 0
+    player.Channels = player.Channels[7:8]
+    player.XMFile.Orders = player.XMFile.Orders[2:3]
+    */
 
     /*
     for i := range player.Channels {
