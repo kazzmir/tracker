@@ -165,6 +165,13 @@ func (channel *Channel) UpdateRow() {
                 if note.EffectParameter > 0 {
                     channel.VolumeSlide = int(note.EffectParameter)
                 }
+
+            case EffectVibratoVolumeSlide:
+                if note.EffectParameter > 0 {
+                    channel.VolumeSlide = int(note.EffectParameter)
+                }
+
+                channel.CurrentEffect = EffectVibratoVolumeSlide
             case EffectTonePortamento:
                 channel.CurrentEffect = EffectTonePortamento
                 if note.EffectParameter > 0 {
@@ -280,6 +287,9 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
         case EffectVolumeSlide:
             channel.doVolumeSlide()
         case EffectVibrato:
+            channel.Vibrato.Update()
+        case EffectVibratoVolumeSlide:
+            channel.doVolumeSlide()
             channel.Vibrato.Update()
         case EffectPortamentoUp:
             channel.CurrentNote += float32(channel.CurrentEffectParameter) / portamentoSlide
@@ -567,6 +577,7 @@ func MakePlayer(file *XMFile, sampleRate int) *Player {
         })
     }
 
+    player.Order = 2
     // player.Channels = player.Channels[6:7]
 
     /*
