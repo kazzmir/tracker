@@ -68,6 +68,7 @@ type Channel struct {
 
     PortamentoTarget int
     Finetune int
+    VolumeSlide int
 }
 
 func (channel *Channel) GetLeftPan() float32 {
@@ -91,6 +92,7 @@ func (channel *Channel) UpdateRow() {
     resetFineTune := false
 
     newNote := channel.CurrentNote
+    newInstrument := channel.CurrentInstrument
 
     if note.HasVolume {
         channel.CurrentVolume = float32(note.Volume) - 16
@@ -104,18 +106,32 @@ func (channel *Channel) UpdateRow() {
         resetFineTune = true
     }
     if note.HasInstrument {
-        channel.CurrentInstrument = int(note.Instrument - 1)
+        newInstrument = int(note.Instrument - 1)
         // log.Printf("Set instrument to %v", channel.CurrentInstrument)
     }
 
     if note.HasEffectType {
         switch note.EffectType {
             case EffectSetSpeed:
-                // log.Printf("Channel %v: Set speed to %v", channel.Channel, note.EffectParameter)
-                channel.player.Speed = int(note.EffectParameter)
+                if note.EffectParameter <= 0x1f {
+                    channel.player.Speed = int(note.EffectParameter)
+                } else if note.EffectParameter >= 0x20 {
+                    channel.player.BPM = int(note.EffectParameter)
+                }
                 channel.player.OnChangeSpeed(channel.player.Speed, channel.player.BPM)
             case EffectSetGlobalVolume:
                 channel.player.GlobalVolume = int(note.EffectParameter)
+            case EffectVolumeSlide:
+                channel.CurrentEffect = EffectVolumeSlide
+                channel.VolumeSlide = int(note.EffectParameter)
+            case EffectTonePortamento:
+                channel.CurrentEffect = EffectTonePortamento
+                channel.CurrentEffectParameter = int(note.EffectParameter)
+                if note.HasNote {
+                    channel.PortamentoTarget = int(note.NoteNumber)
+                }
+                newNote = channel.CurrentNote
+                newInstrument = channel.CurrentInstrument
             case EffectExtended:
                 channel.CurrentEffect = EffectExtended
                 channel.CurrentEffectParameter = int(note.EffectParameter)
@@ -150,14 +166,64 @@ func (channel *Channel) UpdateRow() {
     }
 
     channel.CurrentNote = newNote
+    channel.CurrentInstrument = newInstrument
 
     if resetFineTune {
         channel.Finetune = 0
     }
 }
 
+func (channel *Channel) doVolumeSlide() {
+    volumeAmount := 0
+
+    slideUp := channel.VolumeSlide >> 4
+    slideDown := channel.VolumeSlide & 0xf
+
+    if slideUp == 0xf {
+        volumeAmount = -slideDown
+        if slideDown == 0xf {
+            volumeAmount = slideUp
+        }
+    } else if slideDown == 0xf {
+        if slideUp > 0 {
+            volumeAmount = slideUp
+        } else {
+            volumeAmount = -slideDown
+        }
+    } else if slideUp > 0 {
+        // FIXME: implement fast volume slides
+        // volumeAmount = slideUp * (channel.Player.Speed - 1)
+        volumeAmount = slideUp
+    } else if slideDown > 0 {
+        // volumeAmount = -slideDown * (channel.Player.Speed - 1)
+        volumeAmount = -slideDown
+    }
+
+    channel.CurrentVolume += float32(volumeAmount)
+    if channel.CurrentVolume < 0 {
+        channel.CurrentVolume = 0
+    }
+    if channel.CurrentVolume > 64 {
+        channel.CurrentVolume = 64
+    }
+}
+
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
     switch channel.CurrentEffect {
+        case EffectVolumeSlide:
+            channel.doVolumeSlide()
+        case EffectTonePortamento:
+            if channel.PortamentoTarget > channel.CurrentNote {
+                if channel.PortamentoTarget * 16 * 4 > channel.CurrentNote * 16 * 4 + channel.Finetune / 2 {
+                    channel.Finetune += int(channel.CurrentEffectParameter) * 12
+                }
+            } else {
+                if channel.PortamentoTarget * 16 * 4 < channel.CurrentNote * 16 * 4 - channel.Finetune / 2 {
+                    channel.Finetune -= int(channel.CurrentEffectParameter) * 12
+                }
+            }
+
+            log.Printf("Channel %v: Portamento target %v, current %v, finetune %v", channel.Channel, channel.PortamentoTarget, channel.CurrentNote, channel.Finetune)
         case EffectExtended:
             switch channel.CurrentEffectParameter >> 4 {
                 case ExtendedEffectFinePortamentoUp:
@@ -187,6 +253,9 @@ func (channel *Channel) Update(rate float32) {
     // if channel.CurrentNote != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
     if channel.CurrentInstrument >= 0 && channel.CurrentNote > 0 {
         instrument := channel.player.GetInstrument(channel.CurrentInstrument)
+        if len(instrument.Samples) > 0 {
+            sampleObject := &instrument.Samples[0]
+
 
             /*
             if channel.CurrentEffect == EffectVibrato || channel.CurrentEffect == EffectVibratoAndVolumeSlide {
@@ -194,7 +263,7 @@ func (channel *Channel) Update(rate float32) {
             }
             */
 
-            period := 10 * 12 * 16 * 4 - channel.CurrentNote * 16 * 4 - channel.Finetune/2
+            period := 10 * 12 * 16 * 4 - (channel.CurrentNote + int(sampleObject.RelativeNoteNumber) - 1) * 16 * 4 - int(sampleObject.FineTune)/2
             frequency := 8373 * math.Pow(2, float64(6 * 12 * 16 * 4 - period) / (12 * 16 * 4))
 
             // frequency := float32(8373 * 1712) / float32(channel.CurrentPeriod)
@@ -203,7 +272,7 @@ func (channel *Channel) Update(rate float32) {
             // ???
             // frequency /= 2
 
-            // log.Printf("Channel %v: Note %v, Period %v, Frequency %v, Finetune %v", channel.Channel, channel.CurrentNote, period, frequency, channel.Finetune)
+            // log.Printf("Channel %v: Note %v, Period %v, Frequency %v, Finetune %v RelativeNote %v", channel.Channel, channel.CurrentNote, period, frequency, sampleObject.FineTune, sampleObject.RelativeNoteNumber)
 
             incrementRate := float32(frequency) / float32(channel.player.SampleRate)
 
@@ -228,8 +297,6 @@ func (channel *Channel) Update(rate float32) {
                     }
                     */
 
-
-                    sampleObject := &instrument.Samples[0]
 
                     if position >= len(sampleObject.Data) || (sampleObject.LoopLength > 0 && position >= int(sampleObject.LoopStart + sampleObject.LoopLength)) {
                         // log.Printf("Position %v loop begin %v loop end %v", position, instrument.LoopBegin, instrument.LoopEnd)
@@ -264,6 +331,7 @@ func (channel *Channel) Update(rate float32) {
                     samplesWritten += 1
                 }
             }
+        }
     }
 
     // log.Printf("Channel %v wrote %v samples / %v needed", channel.Channel, samplesWritten, samples)

@@ -162,6 +162,9 @@ func (channel *Channel) UpdateRow() {
             if channel.Player.BPM < 32 {
                 channel.Player.BPM = 32
             }
+            if channel.Player.OnChangeSpeed != nil {
+                channel.Player.OnChangeSpeed(channel.Player.Speed, channel.Player.BPM)
+            }
         case EffectPatternJump:
             channel.Player.DoJump = true
             channel.Player.JumpOrder = channel.EffectParameter & 0x7f
@@ -282,7 +285,7 @@ func (channel *Channel) UpdateRow() {
     channel.startPosition = newStartPosition
 }
 
-func (channel *Channel) doVolumeSlide(changeRow bool) {
+func (channel *Channel) doVolumeSlide() {
     volumeAmount := 0
 
     slideUp := int(channel.VolumeSlide >> 4)
@@ -337,9 +340,9 @@ func (channel *Channel) doPortamentoToNote(ticks int) {
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
     switch channel.CurrentEffect {
         case EffectVolumeSlide:
-            channel.doVolumeSlide(changeRow)
+            channel.doVolumeSlide()
         case EffectVibratoAndVolumeSlide:
-            channel.doVolumeSlide(changeRow)
+            channel.doVolumeSlide()
             channel.Vibrato.Update()
         case EffectVibrato:
             channel.Vibrato.Update()
@@ -354,7 +357,7 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
             channel.Tremolo.Update()
         case EffectPortamentoAndVolumeSlide:
             if !changeRow {
-                channel.doVolumeSlide(changeRow)
+                channel.doVolumeSlide()
                 channel.doPortamentoToNote(ticks)
             }
         case EffectPortamentoToNote:
