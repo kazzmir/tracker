@@ -8,6 +8,46 @@ import (
     "github.com/kazzmir/tracker/common"
 )
 
+const (
+    EffectArpeggio = 0
+    EffectPortamentoUp = 1
+    EffectPortamentoDown = 2
+    EffectTonePortamento = 3
+    EffectVibrato = 4
+    EffectTonePortamentoVolumeSlide = 5
+    EffectVibratoVolumeSlide = 6
+    EffectTremolo = 7
+    EffectSetPanning = 8
+    EffectSetSampleOffset = 9
+    EffectVolumeSlide = 10
+    EffectPositionJump = 11
+    EffectSetVolume = 12
+    EffectPatternBreak = 13
+    EffectExtended = 14
+    EffectSetSpeed = 15
+    EffectSetGlobalVolume = 16
+    EffectSetGlobalVolumeSlide = 17
+    EffectEnvelopePosition = 21
+    EffectPanningSlide = 25
+    EffectMultiRetrigger = 27
+    EffectTremor = 29
+    EffectExtraFinePortamento = 33
+
+    ExtendedEffectFinePortamentoUp = 0x01
+    ExtendedEffectFinePortamentoDown = 0x02
+    ExtendedEffectGlissandoControl = 0x03
+    ExtendedEffectVibratoControl = 0x04
+    ExtendedEffectSetFinetune = 0x05
+    ExtendedEffectSetLoop = 0x06
+    ExtendedEffectTremoloControl = 0x07
+    ExtendedEffectRetriggerNote = 0x09
+    ExtendedEffectFineVolumeSlideUp = 0xa
+    ExtendedEffectFineVolumeSlideDown = 0xb
+    ExtendedEffectNoteCut = 0xc
+    ExtendedEffectNoteDelay = 0xd
+    ExtendedEffectPatternDelay = 0xe
+)
+
 type Channel struct {
     player *Player
     Channel int
@@ -20,9 +60,14 @@ type Channel struct {
 
     startPosition float32
 
+    CurrentEffect int
+    CurrentEffectParameter int // The parameter of the current effect
     CurrentVolume int // The volume of the current note
-    CurrentPeriod int
+    CurrentNote int
     CurrentInstrument int
+
+    PortamentoTarget int
+    Finetune int
 }
 
 func (channel *Channel) GetLeftPan() float32 {
@@ -43,12 +88,20 @@ func (channel *Channel) UpdateRow() {
         return
     }
 
+    resetFineTune := false
+
+    newNote := channel.CurrentNote
+
     if note.HasVolume {
         channel.CurrentVolume = int(note.Volume) - 16
     }
     if note.HasNote {
-        channel.CurrentPeriod = int(note.NoteNumber)
+        newNote = int(note.NoteNumber)
+        if newNote == 97 {
+            newNote = 0 // No note
+        }
         channel.startPosition = 0.0
+        resetFineTune = true
     }
     if note.HasInstrument {
         channel.CurrentInstrument = int(note.Instrument - 1)
@@ -61,13 +114,55 @@ func (channel *Channel) UpdateRow() {
                 // log.Printf("Channel %v: Set speed to %v", channel.Channel, note.EffectParameter)
                 channel.player.Speed = int(note.EffectParameter)
                 channel.player.OnChangeSpeed(channel.player.Speed, channel.player.BPM)
+            case EffectSetGlobalVolume:
+                channel.player.GlobalVolume = int(note.EffectParameter)
+            case EffectExtended:
+                channel.CurrentEffect = EffectExtended
+                channel.CurrentEffectParameter = int(note.EffectParameter)
+                // log.Printf("Channel %v: Extended effect %v with parameter %v", channel.Channel, note.EffectParameter >> 4, note.EffectParameter & 0x0F)
+
+                switch note.EffectParameter >> 4 {
+                    case ExtendedEffectFinePortamentoUp:
+
+                    /*
+                    case ExtendedEffectFinePortamentoDown:
+                    case ExtendedEffectGlissandoControl:
+                    case ExtendedEffectVibratoControl:
+                    case ExtendedEffectSetFinetune:
+                    case ExtendedEffectSetLoop:
+                    case ExtendedEffectTremoloControl:
+                    case ExtendedEffectRetriggerNote:
+                    case ExtendedEffectFineVolumeSlideUp:
+                    case ExtendedEffectFineVolumeSlideDown:
+                    case ExtendedEffectNoteCut:
+                    case ExtendedEffectNoteDelay:
+                    case ExtendedEffectPatternDelay:
+                    */
+                    default: log.Printf("Channel %v: Unknown extended effect 0x%x", channel.Channel, note.EffectParameter >> 4)
+                }
 
             default: log.Printf("Channel %v: Unknown effect type %v", channel.Channel, note.EffectType)
         }
+    } else {
+        channel.CurrentEffect = -1
+    }
+
+    channel.CurrentNote = newNote
+
+    if resetFineTune {
+        channel.Finetune = 0
     }
 }
 
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
+    switch channel.CurrentEffect {
+        case EffectExtended:
+            switch channel.CurrentEffectParameter >> 4 {
+                case ExtendedEffectFinePortamentoUp:
+                    channel.Finetune += int(channel.CurrentEffectParameter & 0x0F)
+                    // log.Printf("Channel fine tune %v", channel.Finetune)
+            }
+    }
 }
 
 func (channel *Channel) Update(rate float32) {
@@ -78,7 +173,7 @@ func (channel *Channel) Update(rate float32) {
     channel.ScopeBuffer.Lock()
 
     // if channel.CurrentNote != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
-    if channel.CurrentInstrument >= 0 && channel.CurrentPeriod > 0 {
+    if channel.CurrentInstrument >= 0 && channel.CurrentNote > 0 {
         instrument := channel.player.GetInstrument(channel.CurrentInstrument)
 
             /*
@@ -87,7 +182,7 @@ func (channel *Channel) Update(rate float32) {
             }
             */
 
-            period := 10 * 12 * 16 * 4 - channel.CurrentPeriod * 16 * 4 /* - finetune/2 */
+            period := 10 * 12 * 16 * 4 - channel.CurrentNote * 16 * 4 - channel.Finetune/2
             frequency := 8373 * math.Pow(2, float64(6 * 12 * 16 * 4 - period) / (12 * 16 * 4))
 
             // frequency := float32(8373 * 1712) / float32(channel.CurrentPeriod)
