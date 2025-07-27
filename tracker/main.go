@@ -382,6 +382,9 @@ func tryLoad(path string, sampleRate int) (TrackerPlayer, error) {
     log.Printf("Unable to load xm: %v", err)
 
     modFile, err := tryLoadMod(path)
+    if err != nil {
+        return nil, err
+    }
     return mod.MakePlayer(modFile, sampleRate), nil
 }
 

@@ -191,8 +191,7 @@ func (channel *Channel) Update(rate float32) {
             // ???
             // frequency /= 2
 
-            // log.Printf("Note %v Octave %v Frequency %v MiddleC %v", channel.CurrentNote.Note, Octaves[channel.CurrentNote.Note], frequency, instrument.MiddleC)
-
+            // log.Printf("Channel %v: Note %v, Period %v, Frequency %v, Finetune %v", channel.Channel, channel.CurrentNote, period, frequency, channel.Finetune)
 
             incrementRate := float32(frequency) / float32(channel.player.SampleRate)
 

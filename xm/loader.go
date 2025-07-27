@@ -85,7 +85,7 @@ func (note *Note) GetEffectName() string {
     }
 
     if int(note.EffectType) < len(effects) {
-        return fmt.Sprintf("%s%02x", effects[note.EffectType], note.EffectParameter)
+        return fmt.Sprintf("%s%02X", effects[note.EffectType], note.EffectParameter)
     }
 
     return "?"
