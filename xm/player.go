@@ -63,11 +63,11 @@ type Channel struct {
     CurrentEffect int
     CurrentEffectParameter int // The parameter of the current effect
     CurrentVolume float32 // The volume of the current note
-    CurrentNote int
+    CurrentNote float32
     CurrentInstrument int
 
-    PortamentoTarget int
-    Finetune int
+    PortamentoTarget float32
+    PortamentoValue float32
     VolumeSlide int
 }
 
@@ -89,7 +89,7 @@ func (channel *Channel) UpdateRow() {
         return
     }
 
-    resetFineTune := false
+    resetPortamento := false
 
     newNote := channel.CurrentNote
     newInstrument := channel.CurrentInstrument
@@ -98,12 +98,12 @@ func (channel *Channel) UpdateRow() {
         channel.CurrentVolume = float32(note.Volume) - 16
     }
     if note.HasNote {
-        newNote = int(note.NoteNumber)
-        if newNote == 97 {
+        newNote = float32(note.NoteNumber)
+        if note.NoteNumber == 97 {
             newNote = 0 // No note
         }
         channel.startPosition = 0.0
-        resetFineTune = true
+        resetPortamento = true
     }
     if note.HasInstrument {
         newInstrument = int(note.Instrument - 1)
@@ -130,7 +130,7 @@ func (channel *Channel) UpdateRow() {
                 channel.CurrentEffect = EffectTonePortamento
                 channel.CurrentEffectParameter = int(note.EffectParameter)
                 if note.HasNote {
-                    channel.PortamentoTarget = int(note.NoteNumber)
+                    channel.PortamentoTarget = float32(note.NoteNumber)
                 }
                 newNote = channel.CurrentNote
                 newInstrument = channel.CurrentInstrument
@@ -141,6 +141,7 @@ func (channel *Channel) UpdateRow() {
 
                 switch note.EffectParameter >> 4 {
                     case ExtendedEffectFinePortamentoUp:
+                    case ExtendedEffectFinePortamentoDown:
                     case ExtendedEffectFineVolumeSlideUp:
                     case ExtendedEffectFineVolumeSlideDown:
 
@@ -170,8 +171,8 @@ func (channel *Channel) UpdateRow() {
     channel.CurrentNote = newNote
     channel.CurrentInstrument = newInstrument
 
-    if resetFineTune {
-        channel.Finetune = 0
+    if resetPortamento {
+        channel.PortamentoValue = 0
     }
 }
 
@@ -211,25 +212,29 @@ func (channel *Channel) doVolumeSlide() {
 }
 
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
+    const portamentoSlide = 10.2
+
     switch channel.CurrentEffect {
         case EffectVolumeSlide:
             channel.doVolumeSlide()
         case EffectTonePortamento:
             if channel.PortamentoTarget > channel.CurrentNote {
-                if channel.PortamentoTarget * 16 * 4 > channel.CurrentNote * 16 * 4 + channel.Finetune / 2 {
-                    channel.Finetune += int(channel.CurrentEffectParameter) * 12
+                if channel.PortamentoTarget > channel.CurrentNote + channel.PortamentoValue {
+                    channel.PortamentoValue += float32(channel.CurrentEffectParameter) / portamentoSlide
                 }
             } else {
-                if channel.PortamentoTarget * 16 * 4 < channel.CurrentNote * 16 * 4 - channel.Finetune / 2 {
-                    channel.Finetune -= int(channel.CurrentEffectParameter) * 12
+                if channel.PortamentoTarget < channel.CurrentNote {
+                    channel.PortamentoValue -= float32(channel.CurrentEffectParameter) / portamentoSlide
                 }
             }
 
-            log.Printf("Channel %v: Portamento target %v, current %v, finetune %v", channel.Channel, channel.PortamentoTarget, channel.CurrentNote, channel.Finetune)
+            // log.Printf("Channel %v: Portamento target %v, current %v, finetune %v", channel.Channel, channel.PortamentoTarget, channel.CurrentNote, channel.PortamentoValue)
         case EffectExtended:
             switch channel.CurrentEffectParameter >> 4 {
                 case ExtendedEffectFinePortamentoUp:
-                    channel.Finetune += int(channel.CurrentEffectParameter & 0x0F)
+                    channel.PortamentoValue += float32(channel.CurrentEffectParameter & 0x0F) / portamentoSlide
+                case ExtendedEffectFinePortamentoDown:
+                    channel.PortamentoValue -= float32(channel.CurrentEffectParameter & 0x0F) / portamentoSlide
                     // log.Printf("Channel fine tune %v", channel.Finetune)
                 case ExtendedEffectFineVolumeSlideUp:
                     channel.CurrentVolume += float32(channel.CurrentEffectParameter & 0x0F) / 16
@@ -265,7 +270,7 @@ func (channel *Channel) Update(rate float32) {
             }
             */
 
-            period := 10 * 12 * 16 * 4 - (channel.CurrentNote + int(sampleObject.RelativeNoteNumber) - 1) * 16 * 4 - int(sampleObject.FineTune)/2
+            period := 10 * 12 * 16 * 4 - (channel.CurrentNote + channel.PortamentoValue + float32(sampleObject.RelativeNoteNumber) - 1) * 16 * 4 - float32(sampleObject.FineTune)/2
             frequency := 8373 * math.Pow(2, float64(6 * 12 * 16 * 4 - period) / (12 * 16 * 4))
 
             // frequency := float32(8373 * 1712) / float32(channel.CurrentPeriod)
