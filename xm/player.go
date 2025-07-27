@@ -62,7 +62,7 @@ type Channel struct {
 
     CurrentEffect int
     CurrentEffectParameter int // The parameter of the current effect
-    CurrentVolume int // The volume of the current note
+    CurrentVolume float32 // The volume of the current note
     CurrentNote int
     CurrentInstrument int
 
@@ -93,7 +93,7 @@ func (channel *Channel) UpdateRow() {
     newNote := channel.CurrentNote
 
     if note.HasVolume {
-        channel.CurrentVolume = int(note.Volume) - 16
+        channel.CurrentVolume = float32(note.Volume) - 16
     }
     if note.HasNote {
         newNote = int(note.NoteNumber)
@@ -123,6 +123,8 @@ func (channel *Channel) UpdateRow() {
 
                 switch note.EffectParameter >> 4 {
                     case ExtendedEffectFinePortamentoUp:
+                    case ExtendedEffectFineVolumeSlideUp:
+                    case ExtendedEffectFineVolumeSlideDown:
 
                     /*
                     case ExtendedEffectFinePortamentoDown:
@@ -161,6 +163,16 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
                 case ExtendedEffectFinePortamentoUp:
                     channel.Finetune += int(channel.CurrentEffectParameter & 0x0F)
                     // log.Printf("Channel fine tune %v", channel.Finetune)
+                case ExtendedEffectFineVolumeSlideUp:
+                    channel.CurrentVolume += float32(channel.CurrentEffectParameter & 0x0F) / 16
+                    if channel.CurrentVolume > 64 {
+                        channel.CurrentVolume = 64
+                    }
+                case ExtendedEffectFineVolumeSlideDown:
+                    channel.CurrentVolume -= float32(channel.CurrentEffectParameter & 0x0F) / 16
+                    if channel.CurrentVolume < 0 {
+                        channel.CurrentVolume = 0
+                    }
             }
     }
 }
@@ -195,7 +207,7 @@ func (channel *Channel) Update(rate float32) {
 
             incrementRate := float32(frequency) / float32(channel.player.SampleRate)
 
-            noteVolume := float32(channel.CurrentVolume) / 64
+            noteVolume := channel.CurrentVolume / 64
 
             leftPan := channel.GetLeftPan()
             rightPan := channel.GetRightPan()
