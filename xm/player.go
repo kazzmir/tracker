@@ -223,6 +223,8 @@ func (channel *Channel) UpdateRow() {
                     channel.RetriggerValue = int(note.EffectParameter)
                 }
                 channel.RetriggerCount = 0
+            case EffectSetSampleOffset:
+                channel.startPosition = float32(note.EffectParameter) * 0x100
             case EffectExtended:
                 channel.CurrentEffect = EffectExtended
                 channel.CurrentEffectParameter = int(note.EffectParameter)
