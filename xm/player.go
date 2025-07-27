@@ -48,6 +48,30 @@ const (
     ExtendedEffectPatternDelay = 0xe
 )
 
+type Vibrato struct {
+    Speed int
+    Depth int
+    position int
+}
+
+func (vibrato *Vibrato) Update() {
+    vibrato.position += vibrato.Speed
+    if vibrato.position >= 64 {
+        vibrato.position -= 64
+    }
+}
+
+func (vibrato *Vibrato) Apply(frequency float32) float32 {
+    if vibrato.Depth <= 0 || vibrato.Speed <= 0 {
+        return frequency
+    }
+
+    // Amiga vibrato is a sine wave with a period of 64
+    // and a depth of 8, so we scale the position to that range
+    vibratoValue := float32(float64(vibrato.Depth * 40) * math.Sin(float64(vibrato.position) * math.Pi * 360 / 64 / 180))
+    return frequency + vibratoValue
+}
+
 type Channel struct {
     player *Player
     Channel int
@@ -71,6 +95,8 @@ type Channel struct {
 
     RetriggerValue int
     RetriggerCount int
+
+    Vibrato Vibrato
 }
 
 func (channel *Channel) GetLeftPan() float32 {
@@ -150,6 +176,12 @@ func (channel *Channel) UpdateRow() {
                 newNote = channel.CurrentNote
                 newInstrument = channel.CurrentInstrument
                 resetStartingPosition = false
+            case EffectVibrato:
+                channel.CurrentEffect = EffectVibrato
+                if note.EffectParameter > 0 {
+                    channel.Vibrato.Speed = int(note.EffectParameter >> 4)
+                    channel.Vibrato.Depth = int(note.EffectParameter & 0x0F)
+                }
             case EffectMultiRetrigger:
                 channel.CurrentEffect = EffectMultiRetrigger
                 if note.EffectParameter > 0 {
@@ -247,6 +279,8 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
             }
         case EffectVolumeSlide:
             channel.doVolumeSlide()
+        case EffectVibrato:
+            channel.Vibrato.Update()
         case EffectPortamentoUp:
             channel.CurrentNote += float32(channel.CurrentEffectParameter) / portamentoSlide
         case EffectPortamentoDown:
@@ -310,7 +344,12 @@ func (channel *Channel) Update(rate float32) {
             */
 
             period := 10 * 12 * 16 * 4 - (channel.CurrentNote + float32(sampleObject.RelativeNoteNumber) - 1) * 16 * 4 - float32(sampleObject.FineTune)/2
-            frequency := 8373 * math.Pow(2, float64(6 * 12 * 16 * 4 - period) / (12 * 16 * 4))
+            frequency := float32(8373 * math.Pow(2, float64(6 * 12 * 16 * 4 - period) / (12 * 16 * 4)))
+
+            if channel.CurrentEffect == EffectVibrato {
+                // log.Printf("Channel %v: Vibrato applied to frequency %v: %v", channel.Channel, frequency, channel.Vibrato.Apply(frequency))
+                frequency = channel.Vibrato.Apply(frequency)
+            }
 
             // frequency := float32(8373 * 1712) / float32(channel.CurrentPeriod)
             // frequency := amigaFrequency / float32(period * 2)
