@@ -118,7 +118,9 @@ func (channel *Channel) UpdateRow() {
                 } else if note.EffectParameter >= 0x20 {
                     channel.player.BPM = int(note.EffectParameter)
                 }
-                channel.player.OnChangeSpeed(channel.player.Speed, channel.player.BPM)
+                if channel.player.OnChangeSpeed != nil {
+                    channel.player.OnChangeSpeed(channel.player.Speed, channel.player.BPM)
+                }
             case EffectSetGlobalVolume:
                 channel.player.GlobalVolume = int(note.EffectParameter)
             case EffectVolumeSlide:
