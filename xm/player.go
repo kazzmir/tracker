@@ -8,15 +8,6 @@ import (
     "github.com/kazzmir/tracker/common"
 )
 
-var PeriodTable = []int{
-    907,900,894,887,881,875,868,862,856,850,844,838,832,826,820,814,
-    808,802,796,791,785,779,774,768,762,757,752,746,741,736,730,725,
-    720,715,709,704,699,694,689,684,678,675,670,665,660,655,651,646,
-    640,636,632,628,623,619,614,610,604,601,597,592,588,584,580,575,
-    570,567,563,559,555,551,547,543,538,535,532,528,524,520,516,513,
-    508,505,502,498,494,491,487,484,480,477,474,470,467,463,460,457,
-}
-
 type Channel struct {
     player *Player
     Channel int
@@ -56,12 +47,18 @@ func (channel *Channel) UpdateRow() {
         channel.CurrentVolume = int(note.Volume) - 16
     }
     if note.HasNote {
-        channel.CurrentPeriod = PeriodTable[int(note.NoteNumber)]
+        channel.CurrentPeriod = int(note.NoteNumber)
         channel.startPosition = 0.0
     }
     if note.HasInstrument {
         channel.CurrentInstrument = int(note.Instrument - 1)
-        log.Printf("Set instrument to %v", channel.CurrentInstrument)
+        // log.Printf("Set instrument to %v", channel.CurrentInstrument)
+    }
+
+    if note.HasEffectType {
+        switch note.EffectType {
+            default: log.Printf("Channel %v: Unknown effect type %v", channel.Channel, note.EffectType)
+        }
     }
 }
 
@@ -85,7 +82,10 @@ func (channel *Channel) Update(rate float32) {
             }
             */
 
-            frequency := float32(8373 * 1712) / float32(channel.CurrentPeriod)
+            period := 10 * 12 * 16 * 4 - channel.CurrentPeriod * 16 * 4 /* - finetune/2 */
+            frequency := 8373 * math.Pow(2, float64(6 * 12 * 16 * 4 - period) / (12 * 16 * 4))
+
+            // frequency := float32(8373 * 1712) / float32(channel.CurrentPeriod)
             // frequency := amigaFrequency / float32(period * 2)
 
             // ???
@@ -94,7 +94,7 @@ func (channel *Channel) Update(rate float32) {
             // log.Printf("Note %v Octave %v Frequency %v MiddleC %v", channel.CurrentNote.Note, Octaves[channel.CurrentNote.Note], frequency, instrument.MiddleC)
 
 
-            incrementRate := frequency / float32(channel.player.SampleRate)
+            incrementRate := float32(frequency) / float32(channel.player.SampleRate)
 
             noteVolume := float32(channel.CurrentVolume) / 64
 
@@ -108,7 +108,7 @@ func (channel *Channel) Update(rate float32) {
             if incrementRate > 0 {
                 volume := channel.Volume * noteVolume * float32(channel.player.GlobalVolume) / 64
 
-                log.Printf("Channel %v: Write sample %v at %v/%v samples %v rate %v volume %v", channel.Channel, instrument.Samples[0].Name, channel.startPosition, len(instrument.Samples[0].Data), samples, incrementRate, volume)
+                // log.Printf("Channel %v: Write sample %v at %v/%v samples %v rate %v volume %v", channel.Channel, instrument.Samples[0].Name, channel.startPosition, len(instrument.Samples[0].Data), samples, incrementRate, volume)
                 for range samples {
                     position := int(channel.startPosition)
                     /*
@@ -284,8 +284,8 @@ func MakePlayer(file *XMFile, sampleRate int) *Player {
     player := &Player{
         XMFile: file,
         Order: 0,
-        BPM: 125,
-        Speed: 6,
+        BPM: int(file.BPM),
+        Speed: int(file.Tempo),
         SampleRate: sampleRate,
         GlobalVolume: 64,
     }
@@ -303,7 +303,7 @@ func MakePlayer(file *XMFile, sampleRate int) *Player {
         })
     }
 
-    player.Channels = player.Channels[:1]
+    // player.Channels = player.Channels[:1]
 
     return player
 }

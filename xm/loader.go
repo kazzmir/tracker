@@ -42,6 +42,8 @@ type XMFile struct {
     Instruments []*Instrument
     Patterns []Pattern
     Channels int // number of channels in the song
+    BPM uint16 // beats per minute
+    Tempo uint16 // tempo in ticks per beat
 }
 
 func (file *XMFile) GetPattern(order int) *Pattern {
@@ -491,6 +493,8 @@ func Load(reader_ io.ReadSeeker) (*XMFile, error) {
         Instruments: instruments,
         Patterns: patterns,
         Channels: int(channelCount),
+        BPM: bpm,
+        Tempo: tempo,
     }, nil
 }
 
