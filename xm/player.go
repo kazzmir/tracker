@@ -67,7 +67,6 @@ type Channel struct {
     CurrentInstrument int
 
     PortamentoTarget float32
-    PortamentoValue float32
     VolumeSlide int
 }
 
@@ -89,7 +88,7 @@ func (channel *Channel) UpdateRow() {
         return
     }
 
-    resetPortamento := false
+    resetStartingPosition := false
 
     newNote := channel.CurrentNote
     newInstrument := channel.CurrentInstrument
@@ -102,8 +101,7 @@ func (channel *Channel) UpdateRow() {
         if note.NoteNumber == 97 {
             newNote = 0 // No note
         }
-        channel.startPosition = 0.0
-        resetPortamento = true
+        resetStartingPosition = true
     }
     if note.HasInstrument {
         newInstrument = int(note.Instrument - 1)
@@ -121,19 +119,34 @@ func (channel *Channel) UpdateRow() {
                 if channel.player.OnChangeSpeed != nil {
                     channel.player.OnChangeSpeed(channel.player.Speed, channel.player.BPM)
                 }
+            case EffectPortamentoUp:
+                channel.CurrentEffect = EffectPortamentoUp
+                if note.EffectParameter > 0 {
+                    channel.CurrentEffectParameter = int(note.EffectParameter)
+                }
+            case EffectPortamentoDown:
+                channel.CurrentEffect = EffectPortamentoDown
+                if note.EffectParameter > 0 {
+                    channel.CurrentEffectParameter = int(note.EffectParameter)
+                }
             case EffectSetGlobalVolume:
                 channel.player.GlobalVolume = int(note.EffectParameter)
             case EffectVolumeSlide:
                 channel.CurrentEffect = EffectVolumeSlide
-                channel.VolumeSlide = int(note.EffectParameter)
+                if note.EffectParameter > 0 {
+                    channel.VolumeSlide = int(note.EffectParameter)
+                }
             case EffectTonePortamento:
                 channel.CurrentEffect = EffectTonePortamento
-                channel.CurrentEffectParameter = int(note.EffectParameter)
+                if note.EffectParameter > 0 {
+                    channel.CurrentEffectParameter = int(note.EffectParameter)
+                }
                 if note.HasNote {
                     channel.PortamentoTarget = float32(note.NoteNumber)
                 }
                 newNote = channel.CurrentNote
                 newInstrument = channel.CurrentInstrument
+                resetStartingPosition = false
             case EffectExtended:
                 channel.CurrentEffect = EffectExtended
                 channel.CurrentEffectParameter = int(note.EffectParameter)
@@ -141,7 +154,9 @@ func (channel *Channel) UpdateRow() {
 
                 switch note.EffectParameter >> 4 {
                     case ExtendedEffectFinePortamentoUp:
+                        resetStartingPosition = false
                     case ExtendedEffectFinePortamentoDown:
+                        resetStartingPosition = false
                     case ExtendedEffectFineVolumeSlideUp:
                     case ExtendedEffectFineVolumeSlideDown:
 
@@ -168,12 +183,12 @@ func (channel *Channel) UpdateRow() {
         channel.CurrentEffect = -1
     }
 
+    if newInstrument != channel.CurrentInstrument || resetStartingPosition {
+        channel.startPosition = 0
+    }
+
     channel.CurrentNote = newNote
     channel.CurrentInstrument = newInstrument
-
-    if resetPortamento {
-        channel.PortamentoValue = 0
-    }
 }
 
 func (channel *Channel) doVolumeSlide() {
@@ -217,24 +232,33 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
     switch channel.CurrentEffect {
         case EffectVolumeSlide:
             channel.doVolumeSlide()
+        case EffectPortamentoUp:
+            channel.CurrentNote += float32(channel.CurrentEffectParameter) / portamentoSlide
+        case EffectPortamentoDown:
+            channel.CurrentNote -= float32(channel.CurrentEffectParameter) / portamentoSlide
         case EffectTonePortamento:
             if channel.PortamentoTarget > channel.CurrentNote {
-                if channel.PortamentoTarget > channel.CurrentNote + channel.PortamentoValue {
-                    channel.PortamentoValue += float32(channel.CurrentEffectParameter) / portamentoSlide
+                channel.CurrentNote += float32(channel.CurrentEffectParameter) / portamentoSlide
+                if channel.CurrentNote > channel.PortamentoTarget {
+                    channel.CurrentNote = channel.PortamentoTarget
                 }
             } else {
                 if channel.PortamentoTarget < channel.CurrentNote {
-                    channel.PortamentoValue -= float32(channel.CurrentEffectParameter) / portamentoSlide
+                    channel.CurrentNote -= float32(channel.CurrentEffectParameter) / portamentoSlide
+
+                    if channel.CurrentNote < channel.PortamentoTarget {
+                        channel.CurrentNote = channel.PortamentoTarget
+                    }
                 }
             }
 
-            // log.Printf("Channel %v: Portamento target %v, current %v, finetune %v", channel.Channel, channel.PortamentoTarget, channel.CurrentNote, channel.PortamentoValue)
+            // log.Printf("Channel %v: Portamento target %v, current %v", channel.Channel, channel.PortamentoTarget, channel.CurrentNote)
         case EffectExtended:
             switch channel.CurrentEffectParameter >> 4 {
                 case ExtendedEffectFinePortamentoUp:
-                    channel.PortamentoValue += float32(channel.CurrentEffectParameter & 0x0F) / portamentoSlide
+                    channel.CurrentNote += float32(channel.CurrentEffectParameter & 0x0F) / portamentoSlide
                 case ExtendedEffectFinePortamentoDown:
-                    channel.PortamentoValue -= float32(channel.CurrentEffectParameter & 0x0F) / portamentoSlide
+                    channel.CurrentNote -= float32(channel.CurrentEffectParameter & 0x0F) / portamentoSlide
                     // log.Printf("Channel fine tune %v", channel.Finetune)
                 case ExtendedEffectFineVolumeSlideUp:
                     channel.CurrentVolume += float32(channel.CurrentEffectParameter & 0x0F) / 16
@@ -270,7 +294,7 @@ func (channel *Channel) Update(rate float32) {
             }
             */
 
-            period := 10 * 12 * 16 * 4 - (channel.CurrentNote + channel.PortamentoValue + float32(sampleObject.RelativeNoteNumber) - 1) * 16 * 4 - float32(sampleObject.FineTune)/2
+            period := 10 * 12 * 16 * 4 - (channel.CurrentNote + float32(sampleObject.RelativeNoteNumber) - 1) * 16 * 4 - float32(sampleObject.FineTune)/2
             frequency := 8373 * math.Pow(2, float64(6 * 12 * 16 * 4 - period) / (12 * 16 * 4))
 
             // frequency := float32(8373 * 1712) / float32(channel.CurrentPeriod)
@@ -489,7 +513,14 @@ func MakePlayer(file *XMFile, sampleRate int) *Player {
         })
     }
 
-    // player.Channels = player.Channels[:1]
+    // player.Channels = player.Channels[6:7]
+
+    /*
+    for i := range player.Channels {
+        player.Channels[i].Mute = true
+    }
+    player.Channels[6].Mute = false
+    */
 
     return player
 }
