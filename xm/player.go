@@ -8,6 +8,15 @@ import (
     "github.com/kazzmir/tracker/common"
 )
 
+var PeriodTable = []int{
+    907,900,894,887,881,875,868,862,856,850,844,838,832,826,820,814,
+    808,802,796,791,785,779,774,768,762,757,752,746,741,736,730,725,
+    720,715,709,704,699,694,689,684,678,675,670,665,660,655,651,646,
+    640,636,632,628,623,619,614,610,604,601,597,592,588,584,580,575,
+    570,567,563,559,555,551,547,543,538,535,532,528,524,520,516,513,
+    508,505,502,498,494,491,487,484,480,477,474,470,467,463,460,457,
+}
+
 type Channel struct {
     player *Player
     Channel int
@@ -18,9 +27,21 @@ type Channel struct {
     currentRow int // The row that is currently being played
     Mute bool
 
-    CurrentVolume float32 // The volume of the current note
+    startPosition float32
+
+    CurrentVolume int // The volume of the current note
     CurrentPeriod int
     CurrentInstrument int
+}
+
+func (channel *Channel) GetLeftPan() float32 {
+    // FIXME
+    return 0.5
+}
+
+func (channel *Channel) GetRightPan() float32 {
+    // FIXME
+    return 0.5
 }
 
 func (channel *Channel) UpdateRow() {
@@ -32,20 +53,121 @@ func (channel *Channel) UpdateRow() {
     }
 
     if note.HasVolume {
-        channel.CurrentVolume = float32(note.Volume - 16) / 64.0
+        channel.CurrentVolume = int(note.Volume) - 16
     }
     if note.HasNote {
-        channel.CurrentPeriod = int(note.NoteNumber)
+        channel.CurrentPeriod = PeriodTable[int(note.NoteNumber)]
+        channel.startPosition = 0.0
     }
     if note.HasInstrument {
-        channel.CurrentInstrument = int(note.Instrument)
+        channel.CurrentInstrument = int(note.Instrument - 1)
+        log.Printf("Set instrument to %v", channel.CurrentInstrument)
     }
 }
 
 func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
 }
 
-func (channel *Channel) Update(timeDelta float32) {
+func (channel *Channel) Update(rate float32) {
+    samples := int(float32(channel.player.SampleRate) * rate)
+    samplesWritten := 0
+
+    channel.AudioBuffer.Lock()
+    channel.ScopeBuffer.Lock()
+
+    // if channel.CurrentNote != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
+    if channel.CurrentInstrument >= 0 && channel.CurrentPeriod > 0 {
+        instrument := channel.player.GetInstrument(channel.CurrentInstrument)
+
+            /*
+            if channel.CurrentEffect == EffectVibrato || channel.CurrentEffect == EffectVibratoAndVolumeSlide {
+                period = channel.Vibrato.Apply(period)
+            }
+            */
+
+            frequency := float32(8373 * 1712) / float32(channel.CurrentPeriod)
+            // frequency := amigaFrequency / float32(period * 2)
+
+            // ???
+            // frequency /= 2
+
+            // log.Printf("Note %v Octave %v Frequency %v MiddleC %v", channel.CurrentNote.Note, Octaves[channel.CurrentNote.Note], frequency, instrument.MiddleC)
+
+
+            incrementRate := frequency / float32(channel.player.SampleRate)
+
+            noteVolume := float32(channel.CurrentVolume) / 64
+
+            leftPan := channel.GetLeftPan()
+            rightPan := channel.GetRightPan()
+
+            // log.Printf("note volume %v", noteVolume)
+
+            // log.Printf("Write sample %v at %v/%v samples %v rate %v", channel.CurrentSample.Name, channel.startPosition, len(channel.CurrentSample.Data), samples, incrementRate)
+
+            if incrementRate > 0 {
+                volume := channel.Volume * noteVolume * float32(channel.player.GlobalVolume) / 64
+
+                log.Printf("Channel %v: Write sample %v at %v/%v samples %v rate %v volume %v", channel.Channel, instrument.Samples[0].Name, channel.startPosition, len(instrument.Samples[0].Data), samples, incrementRate, volume)
+                for range samples {
+                    position := int(channel.startPosition)
+                    /*
+                    if position >= len(channel.CurrentSample.Data) {
+                        break
+                    }
+                    */
+
+
+                    sampleObject := &instrument.Samples[0]
+
+                    if position >= len(sampleObject.Data) || (sampleObject.LoopLength > 0 && position >= int(sampleObject.LoopStart + sampleObject.LoopLength)) {
+                        // log.Printf("Position %v loop begin %v loop end %v", position, instrument.LoopBegin, instrument.LoopEnd)
+                        if sampleObject.LoopLength > 0 && position >= int(sampleObject.LoopStart + sampleObject.LoopLength) {
+                            channel.startPosition = float32(sampleObject.LoopStart)
+                            position = int(channel.startPosition)
+                        } else {
+                            break
+                        }
+                    }
+
+                    // noteVolume = 1
+
+                    sample := instrument.Samples[0].Data[position] * volume
+
+                    // log.Printf("Sample %v", sample)
+
+                    /*
+                    if channel.CurrentEffect == EffectTremolo {
+                        // log.Printf("tremolo %v -> %v", sample, channel.Tremolo.Apply(sample))
+                        sample = channel.Tremolo.Apply(sample)
+                    }
+                    */
+
+                    channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample * leftPan)))
+                    channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample * rightPan)))
+
+                    channel.ScopeBuffer.UnsafeWrite(max(-1, min(1, sample * leftPan)))
+                    channel.ScopeBuffer.UnsafeWrite(max(-1, min(1, sample * rightPan)))
+
+                    channel.startPosition += incrementRate
+                    samplesWritten += 1
+                }
+            }
+    }
+
+    // log.Printf("Channel %v wrote %v samples / %v needed", channel.Channel, samplesWritten, samples)
+
+    for range (samples - samplesWritten) {
+        channel.AudioBuffer.UnsafeWrite(0.0)
+        channel.AudioBuffer.UnsafeWrite(0.0)
+
+        channel.ScopeBuffer.UnsafeWrite(0.0)
+        channel.ScopeBuffer.UnsafeWrite(0.0)
+    }
+
+    channel.AudioBuffer.Unlock()
+    channel.ScopeBuffer.Unlock()
+
 }
 
 // FIXME: maybe have a common channel object with this read method?
@@ -114,12 +236,15 @@ type Player struct {
     common.DummyPlayer
 
     XMFile *XMFile
+    SampleRate int
     Order int
     ticks float32
     CurrentRow int
     BPM int
     Speed int
     OrdersPlayed int // How many orders have been played so far
+
+    GlobalVolume int
 
     Channels []*Channel
 
@@ -161,6 +286,8 @@ func MakePlayer(file *XMFile, sampleRate int) *Player {
         Order: 0,
         BPM: 125,
         Speed: 6,
+        SampleRate: sampleRate,
+        GlobalVolume: 64,
     }
 
     for channelNum := range file.Channels {
@@ -170,10 +297,13 @@ func MakePlayer(file *XMFile, sampleRate int) *Player {
             AudioBuffer: common.MakeAudioBuffer(sampleRate * 2),
             ScopeBuffer: common.MakeAudioBuffer(sampleRate * 2 / 10),
             Volume: 1.0,
+            CurrentVolume: 64,
             buffer: make([]float32, sampleRate),
             currentRow: -1,
         })
     }
+
+    player.Channels = player.Channels[:1]
 
     return player
 }
@@ -252,6 +382,14 @@ func (player *Player) GetName() string {
     }
 
     return ""
+}
+
+func (player *Player) GetInstrument(instrument int) *Instrument {
+    if instrument < 0 || instrument >= len(player.XMFile.Instruments) {
+        return nil
+    }
+
+    return player.XMFile.Instruments[instrument]
 }
 
 func (player *Player) GetRowNote(channel int, row int) *Note {

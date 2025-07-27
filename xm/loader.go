@@ -150,6 +150,7 @@ type Pattern struct {
 }
 
 type Instrument struct {
+    Samples []Sample
 }
 
 type Sample struct {
@@ -862,5 +863,7 @@ func readInstrument(reader_ io.Reader, instrumentHeaderSize uint32) (*Instrument
 
     }
 
-    return &Instrument{}, nil
+    return &Instrument{
+        Samples: sampleData,
+    }, nil
 }
