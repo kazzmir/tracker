@@ -57,6 +57,11 @@ func (channel *Channel) UpdateRow() {
 
     if note.HasEffectType {
         switch note.EffectType {
+            case EffectSetSpeed:
+                // log.Printf("Channel %v: Set speed to %v", channel.Channel, note.EffectParameter)
+                channel.player.Speed = int(note.EffectParameter)
+                channel.player.OnChangeSpeed(channel.player.Speed, channel.player.BPM)
+
             default: log.Printf("Channel %v: Unknown effect type %v", channel.Channel, note.EffectType)
         }
     }
