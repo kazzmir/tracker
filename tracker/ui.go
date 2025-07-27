@@ -694,14 +694,10 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
         unmutedImage := &widget.ButtonImage{
             Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
-            Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
-            Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
-        }
-
-        mutedImage := &widget.ButtonImage{
-            Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x70, G: 0x28, B: 0x0f, A: 255}),
+            // Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
             Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x92, G: 0x34, B: 0x14, A: 255}),
-            Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0xc8, G: 0x47, B: 0x1b, A: 255}),
+            Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
+            PressedHover: ui_image.NewNineSliceColor(color.NRGBA{R: 0xd6, G: 0x33, B: 0x15, A: 255}),
         }
 
         channelButton = widget.NewButton(
@@ -709,14 +705,9 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
             widget.ButtonOpts.Text(fmt.Sprintf("Channel %d", i+1), &face, &widget.ButtonTextColor{
                 Idle: color.White,
             }),
+            widget.ButtonOpts.ToggleMode(),
             widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
-                // FIXME: replace this with channelButton.SetImage()
-                if player.ToggleMuteChannel(i) {
-                    widget.ButtonOpts.Image(mutedImage)(channelButton)
-                } else {
-                    widget.ButtonOpts.Image(unmutedImage)(channelButton)
-                }
-                channelButton.Validate()
+                player.ToggleMuteChannel(i)
             }),
             widget.ButtonOpts.TextPadding(&widget.Insets{
                 Left: 1,
