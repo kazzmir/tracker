@@ -72,6 +72,27 @@ func (vibrato *Vibrato) Apply(frequency float32) float32 {
     return frequency + vibratoValue
 }
 
+type Tremolo struct {
+    Speed int
+    Depth int
+    position int
+}
+
+func (tremolo *Tremolo) Update() {
+    tremolo.position += tremolo.Speed
+    if tremolo.position >= 64 {
+        tremolo.position -= 64
+    }
+}
+
+func (tremolo *Tremolo) Value() float64 {
+    return float64(tremolo.Depth) / 40 * math.Sin(float64(tremolo.position) * math.Pi * 360 / 64 / 180)
+}
+
+func (tremolo *Tremolo) Apply(volume float32) float32 {
+    return volume + float32(tremolo.Value())
+}
+
 type Channel struct {
     player *Player
     Channel int
@@ -97,6 +118,7 @@ type Channel struct {
     RetriggerCount int
 
     Vibrato Vibrato
+    Tremolo Tremolo
 }
 
 func (channel *Channel) GetLeftPan() float32 {
@@ -172,6 +194,12 @@ func (channel *Channel) UpdateRow() {
                 }
 
                 channel.CurrentEffect = EffectVibratoVolumeSlide
+            case EffectTremolo:
+                channel.CurrentEffect = EffectTremolo
+                if note.EffectParameter > 0 {
+                    channel.Tremolo.Speed = int(note.EffectParameter >> 4)
+                    channel.Tremolo.Depth = int(note.EffectParameter & 0x0F)
+                }
             case EffectTonePortamento:
                 channel.CurrentEffect = EffectTonePortamento
                 if note.EffectParameter > 0 {
@@ -291,6 +319,8 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
         case EffectVibratoVolumeSlide:
             channel.doVolumeSlide()
             channel.Vibrato.Update()
+        case EffectTremolo:
+            channel.Tremolo.Update()
         case EffectPortamentoUp:
             channel.CurrentNote += float32(channel.CurrentEffectParameter) / portamentoSlide
         case EffectPortamentoDown:
@@ -383,6 +413,10 @@ func (channel *Channel) Update(rate float32) {
             if incrementRate > 0 {
                 volume := channel.Volume * noteVolume * float32(channel.player.GlobalVolume) / 64
 
+                if channel.CurrentEffect == EffectTremolo {
+                    volume = channel.Tremolo.Apply(volume)
+                }
+
                 // log.Printf("Channel %v: Write sample %v at %v/%v samples %v rate %v volume %v", channel.Channel, instrument.Samples[0].Name, channel.startPosition, len(instrument.Samples[0].Data), samples, incrementRate, volume)
                 for range samples {
                     position := int(channel.startPosition)
@@ -408,13 +442,6 @@ func (channel *Channel) Update(rate float32) {
                     sample := instrument.Samples[0].Data[position] * volume
 
                     // log.Printf("Sample %v", sample)
-
-                    /*
-                    if channel.CurrentEffect == EffectTremolo {
-                        // log.Printf("tremolo %v -> %v", sample, channel.Tremolo.Apply(sample))
-                        sample = channel.Tremolo.Apply(sample)
-                    }
-                    */
 
                     channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample * leftPan)))
                     channel.AudioBuffer.UnsafeWrite(max(-1, min(1, sample * rightPan)))
@@ -577,7 +604,7 @@ func MakePlayer(file *XMFile, sampleRate int) *Player {
         })
     }
 
-    player.Order = 2
+    // player.Order = 2
     // player.Channels = player.Channels[6:7]
 
     /*
