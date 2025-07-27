@@ -366,6 +366,11 @@ func (channel *Channel) UpdateRow() {
             } else if note.EffectParameter >= 0x20 && note.EffectParameter <= 0xff {
                 channel.Player.BPM = int(note.EffectParameter)
             }
+
+            if channel.Player.OnChangeSpeed != nil {
+                channel.Player.OnChangeSpeed(channel.Player.Speed, channel.Player.BPM)
+            }
+
         case EffectArpeggio:
             if note.EffectParameter > 0 {
                 channel.CurrentEffect = EffectArpeggio
@@ -804,11 +809,6 @@ func (player *Player) Update(timeDelta float32) {
         }
 
         channel.Update(timeDelta)
-    }
-
-    // FIXME: we could possibly just call this when the speed/bpm changes
-    if player.OnChangeSpeed != nil {
-        player.OnChangeSpeed(player.Speed, player.BPM)
     }
 }
 
