@@ -14,13 +14,13 @@ import (
     "flag"
     "context"
     "runtime/pprof"
-    "encoding/binary"
 
     "github.com/kazzmir/tracker/mod"
     "github.com/kazzmir/tracker/s3m"
     "github.com/kazzmir/tracker/xm"
     "github.com/kazzmir/tracker/data"
     "github.com/kazzmir/tracker/common"
+    tracker_lib "github.com/kazzmir/tracker/lib"
 
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -297,44 +297,6 @@ func (engine *Engine) Layout(outsideWidth, outsideHeight int) (int, int) {
     return outsideWidth, outsideHeight
 }
 
-func saveToWav(path string, reader io.Reader, sampleRate int) error {
-    outputFile, err := os.Create(path)
-    if err != nil {
-        return err
-    }
-    defer outputFile.Close()
-
-    dataLength := int64(0)
-    bitsPerSample := 32
-    bytePerBloc := 2 * bitsPerSample / 8
-    bytePerSec := sampleRate * bytePerBloc // 2 channels, 32 bits per sample
-
-    binary.Write(outputFile, binary.LittleEndian, []byte("RIFF"))
-    binary.Write(outputFile, binary.LittleEndian, uint32(dataLength + 36))
-    binary.Write(outputFile, binary.LittleEndian, []byte("WAVE"))
-    binary.Write(outputFile, binary.LittleEndian, []byte("fmt "))
-    binary.Write(outputFile, binary.LittleEndian, uint32(16))  // BlocSize
-    binary.Write(outputFile, binary.LittleEndian, uint16(3))   // AudioFormat, IEEE float
-    binary.Write(outputFile, binary.LittleEndian, uint16(2))
-    binary.Write(outputFile, binary.LittleEndian, uint32(sampleRate))
-    binary.Write(outputFile, binary.LittleEndian, uint32(bytePerSec))
-    binary.Write(outputFile, binary.LittleEndian, uint16(bytePerBloc))
-    binary.Write(outputFile, binary.LittleEndian, uint16(bitsPerSample))
-    binary.Write(outputFile, binary.LittleEndian, []byte("data"))
-    binary.Write(outputFile, binary.LittleEndian, uint32(dataLength))
-    dataLength, err = io.Copy(outputFile, reader)
-
-    // now that we know the data length, we can go back and write it in the header
-    outputFile.Seek(4, io.SeekStart)
-    binary.Write(outputFile, binary.LittleEndian, uint32(dataLength + 36))
-    outputFile.Seek(40, io.SeekStart)
-    binary.Write(outputFile, binary.LittleEndian, uint32(dataLength))
-
-    log.Printf("Copied %v bytes to %v", dataLength, path)
-
-    return err
-}
-
 func tryLoadS3m(path string) (*s3m.S3MFile, error) {
     file, err := os.Open(path)
     if err != nil {
@@ -366,7 +328,7 @@ func tryLoadXM(path string) (*xm.XMFile, error) {
     return xm.Load(file)
 }
 
-func tryLoad(path string, sampleRate int) (TrackerPlayer, error) {
+func TryLoad(path string, sampleRate int) (TrackerPlayer, error) {
     s3mFile, err := tryLoadS3m(path)
     if err == nil {
         return s3m.MakePlayer(s3mFile, sampleRate), nil
@@ -460,7 +422,7 @@ func main(){
         path := flag.Args()[0]
 
         var err error
-        player, err = tryLoad(path, sampleRate)
+        player, err = TryLoad(path, sampleRate)
         if err != nil {
             log.Printf("Error loading module: %v", err)
             return
@@ -489,7 +451,7 @@ func main(){
     if *wav != "" {
         log.Printf("Rendering to %v", *wav)
 
-        err := saveToWav(*wav, player.RenderToPCM(), sampleRate)
+        err := tracker_lib.SaveToWav(*wav, player.RenderToPCM(), sampleRate)
         if err != nil {
             log.Printf("Error saving to wav: %v", err)
             return
