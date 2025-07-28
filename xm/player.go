@@ -215,6 +215,13 @@ func (channel *Channel) UpdateRow() {
                     channel.Tremolo.Speed = int(note.EffectParameter >> 4)
                     channel.Tremolo.Depth = int(note.EffectParameter & 0x0F)
                 }
+            case EffectPatternBreak:
+                value := int(note.EffectParameter >> 4) * 10 + int(note.EffectParameter & 0xf)
+                if value > 63 {
+                    value = 0
+                }
+                channel.player.DoBreak = true
+                channel.player.BreakRow = value
             case EffectTonePortamento:
                 channel.CurrentEffect = EffectTonePortamento
                 if note.EffectParameter > 0 {
@@ -568,6 +575,9 @@ type Player struct {
 
     GlobalVolume int
 
+    DoBreak bool
+    BreakRow int // The row to break at, if DoBreak is true
+
     Channels []*Channel
 
     OnChangeRow func(row int)
@@ -652,6 +662,16 @@ func (player *Player) Update(timeDelta float32) {
         player.CurrentRow += 1
         // log.Printf("Row: %v", player.CurrentRow)
         player.ticks -= float32(player.Speed)
+
+        if player.DoBreak {
+            player.NextOrder()
+            player.CurrentRow = player.BreakRow
+            player.DoBreak = false
+
+            if player.OnChangeOrder != nil {
+                player.OnChangeOrder(player.Order, player.GetPattern())
+            }
+        }
 
         if player.OnChangeRow != nil {
             player.OnChangeRow(player.CurrentRow)
