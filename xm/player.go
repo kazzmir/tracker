@@ -810,3 +810,89 @@ func (player *Player) GetChannelData(channel int, data []float32) int {
 func (player *Player) ResetRow() {
     player.CurrentRow = 0
 }
+
+
+func (player *Player) RenderToPCM() io.Reader {
+    // make a buffer to hold 1/100th of a second of audio data, which is 4-bytes per sample
+    // and 1 samples per channel
+    rate := 100
+    buffer := make([]float32, player.SampleRate * 2 / rate)
+    mix := make([]float32, player.SampleRate * 2 / rate)
+
+    fillMix := func() bool {
+        if player.OrdersPlayed >= player.GetSongLength() {
+            return false
+        }
+
+        player.Update(1.0 / float32(rate))
+
+        for i := range mix {
+            mix[i] = 0
+        }
+
+        for _, channel := range player.Channels {
+            amount := channel.AudioBuffer.Read(buffer)
+
+            // log.Printf("Channel %v produced %v samples", chNumber, amount)
+
+            if amount > 0 {
+                // copy the samples into the mix buffer
+                for i := range amount {
+                    mix[i] = mix[i] + buffer[i]
+                }
+            }
+        }
+
+        for i := range mix {
+            mix[i] = max(min(mix[i], 1), -1)
+            // mix[i] = float32(math.Tanh(float64(mix[i])))
+        }
+
+        return true
+    }
+
+    mixPosition := len(mix)
+    reader := func(data []byte) (int, error) {
+        if len(data) == 0 {
+            return 0, nil
+        }
+
+        if player.OrdersPlayed >= player.GetSongLength() {
+            return 0, io.EOF
+        }
+
+        // wait for the music to be produced
+        if mixPosition < len(mix) {
+            part := mix[mixPosition:]
+
+            // log.Printf("Partial Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
+
+            amount := common.CopyFloat32(data, part)
+
+            /*
+            amount := min(len(data), len(part))
+            copy(data, part[:amount])
+            */
+            mixPosition += amount
+            return amount * 4, nil
+        }
+
+        mixPosition = 0
+
+        more := fillMix()
+        if !more {
+            return 0, io.EOF
+        }
+
+        // copy the mix into the data buffer
+        // log.Printf("Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
+        amount := common.CopyFloat32(data, mix)
+        mixPosition += amount
+
+        return amount * 4, nil
+    }
+
+    return &common.ReaderFunc{
+        Func: reader,
+    }
+}
