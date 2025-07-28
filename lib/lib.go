@@ -7,7 +7,7 @@ import (
     "log"
 )
 
-func SaveToWav(path string, reader io.Reader, sampleRate int) error {
+func SaveToWav(path string, reader io.Reader, sampleRate int, logger *log.Logger) error {
     outputFile, err := os.Create(path)
     if err != nil {
         return err
@@ -40,7 +40,7 @@ func SaveToWav(path string, reader io.Reader, sampleRate int) error {
     outputFile.Seek(40, io.SeekStart)
     binary.Write(outputFile, binary.LittleEndian, uint32(dataLength))
 
-    log.Printf("Copied %v bytes to %v", dataLength, path)
+    logger.Printf("Copied %v bytes to %v", dataLength, path)
 
     return err
 }

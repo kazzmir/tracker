@@ -669,7 +669,7 @@ func (player *Player) Update(timeDelta float32) {
             player.OnChangeOrder(player.Order, player.GetPattern())
         }
 
-        log.Printf("order %v next pattern: %v", player.Order, player.GetPattern())
+        // log.Printf("order %v next pattern: %v", player.Order, player.GetPattern())
     }
 
 

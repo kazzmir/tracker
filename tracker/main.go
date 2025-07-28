@@ -120,7 +120,7 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
             return nil, err
         }
 
-        loaded, err := s3m.Load(bytes.NewReader(buffer.Bytes()))
+        loaded, err := s3m.Load(bytes.NewReader(buffer.Bytes()), log.Default())
         if err != nil {
             return nil, err
         }
@@ -304,7 +304,7 @@ func tryLoadS3m(path string) (*s3m.S3MFile, error) {
     }
     defer file.Close()
 
-    return s3m.Load(file)
+    return s3m.Load(file, log.Default())
 }
 
 func tryLoadMod(path string) (*mod.ModFile, error) {
@@ -325,7 +325,7 @@ func tryLoadXM(path string) (*xm.XMFile, error) {
 
     defer file.Close()
 
-    return xm.Load(file)
+    return xm.Load(file, log.Default())
 }
 
 func TryLoad(path string, sampleRate int) (TrackerPlayer, error) {
@@ -451,7 +451,7 @@ func main(){
     if *wav != "" {
         log.Printf("Rendering to %v", *wav)
 
-        err := tracker_lib.SaveToWav(*wav, player.RenderToPCM(), sampleRate)
+        err := tracker_lib.SaveToWav(*wav, player.RenderToPCM(), sampleRate, log.Default())
         if err != nil {
             log.Printf("Error saving to wav: %v", err)
             return

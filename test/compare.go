@@ -26,7 +26,7 @@ func tryLoadS3m(path string) (*s3m.S3MFile, error) {
     }
     defer file.Close()
 
-    return s3m.Load(file)
+    return s3m.Load(file, log.New(io.Discard, "", 0))
 }
 
 func tryLoadMod(path string) (*mod.ModFile, error) {
@@ -47,7 +47,7 @@ func tryLoadXM(path string) (*xm.XMFile, error) {
 
     defer file.Close()
 
-    return xm.Load(file)
+    return xm.Load(file, log.New(io.Discard, "", 0))
 }
 
 type Renderer interface {
@@ -60,22 +60,22 @@ func TryLoad(path string, sampleRate int) (Renderer, error) {
         return s3m.MakePlayer(s3mFile, sampleRate), nil
     }
 
-    log.Printf("Unable to load s3m: %v", err)
+    // log.Printf("Unable to load s3m: %v", err)
 
     xmFile, err := tryLoadXM(path)
     if err == nil {
         return xm.MakePlayer(xmFile, sampleRate), nil
     }
 
-    log.Printf("Unable to load xm: %v", err)
+    // log.Printf("Unable to load xm: %v", err)
 
     modFile, err := tryLoadMod(path)
     if err != nil {
         return nil, err
     }
+
     return mod.MakePlayer(modFile, sampleRate), nil
 }
-
 
 func cosineSimilarity(wave1, wave2 []float64) float64 {
 	if len(wave1) != len(wave2) {
@@ -199,10 +199,12 @@ func compare(wav1 string, wav2 string) ([]float64, error) {
     return scores, nil
 }
 
-func renderScores(scores []float64) {
+func renderScores(testFile string, scores []float64) {
     good := color.New(color.FgGreen)
     ok := color.New(color.FgYellow)
     bad := color.New(color.FgRed)
+
+    fmt.Printf("%v: ", testFile)
 
     for _, score := range scores {
         switch {
@@ -221,12 +223,14 @@ func main() {
 
     sampleRate := 44100
 
-    player, err := TryLoad("test/test.compat.xm", sampleRate)
+    testFile := "test/test.compat.xm"
+
+    player, err := TryLoad(testFile, sampleRate)
     if err != nil {
         log.Fatalf("Error loading tracker file: %v", err)
     }
 
-    err = tracker_lib.SaveToWav(tmpWav, player.RenderToPCM(), sampleRate)
+    err = tracker_lib.SaveToWav(tmpWav, player.RenderToPCM(), sampleRate, log.New(io.Discard, "", 0))
     if err != nil {
         log.Fatalf("Error saving to WAV: %v", err)
     }
@@ -238,7 +242,7 @@ func main() {
         log.Fatalf("Error comparing files: %v", err)
     }
 
-    renderScores(scoresGood)
+    renderScores(testFile, scoresGood)
 
 
     /*

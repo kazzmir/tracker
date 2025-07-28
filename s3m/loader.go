@@ -113,7 +113,7 @@ type S3MFile struct {
     GlobalVolume uint8
 }
 
-func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
+func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
     reader := bufio.NewReader(reader_)
 
     name := make([]byte, 28)
@@ -124,7 +124,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
 
     name = bytes.TrimRight(name, "\x00")
 
-    log.Printf("Name: '%s'", string(name))
+    logger.Printf("Name: '%s'", string(name))
 
     // skip 0x1a byte
     _, err = reader.ReadByte()
@@ -136,7 +136,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
     if err != nil {
         return nil, err
     }
-    log.Printf("Filetype: %v", filetype)
+    logger.Printf("Filetype: %v", filetype)
     // filetype should be 16, but not sure we really care
 
     // expansion bytes, unused
@@ -150,7 +150,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
     if err != nil {
         return nil, err
     }
-    log.Printf("Song length: %v", songLength)
+    logger.Printf("Song length: %v", songLength)
 
 
     var numInstruments uint16
@@ -158,35 +158,35 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
     if err != nil {
         return nil, err
     }
-    log.Printf("Instruments: %v", numInstruments)
+    logger.Printf("Instruments: %v", numInstruments)
 
     var patternsIgnore uint16
     err = binary.Read(reader, binary.LittleEndian, &patternsIgnore)
     if err != nil {
         return nil, err
     }
-    log.Printf("Patterns: %v", patternsIgnore)
+    logger.Printf("Patterns: %v", patternsIgnore)
 
     var flags uint16
     err = binary.Read(reader, binary.LittleEndian, &flags)
     if err != nil {
         return nil, err
     }
-    log.Printf("Flags: %v", flags)
+    logger.Printf("Flags: %v", flags)
 
     var trackerVersion uint16
     err = binary.Read(reader, binary.LittleEndian, &trackerVersion)
     if err != nil {
         return nil, err
     }
-    log.Printf("Tracker version: 0x%x", trackerVersion)
+    logger.Printf("Tracker version: 0x%x", trackerVersion)
 
     var sampleFormat uint16
     err = binary.Read(reader, binary.LittleEndian, &sampleFormat)
     if err != nil {
         return nil, err
     }
-    log.Printf("Sample format: %v", sampleFormat)
+    logger.Printf("Sample format: %v", sampleFormat)
 
     var signature [4]byte
     _, err = io.ReadFull(reader, signature[:])
@@ -202,25 +202,25 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
         return nil, err
     }
 
-    log.Printf("Global volume: %v", globalVolume)
+    logger.Printf("Global volume: %v", globalVolume)
 
     initialSpeed, err := reader.ReadByte()
     if err != nil {
         return nil, err
     }
-    log.Printf("Initial speed: %v", initialSpeed)
+    logger.Printf("Initial speed: %v", initialSpeed)
 
     initialTempo, err := reader.ReadByte()
     if err != nil {
         return nil, err
     }
-    log.Printf("Initial tempo: %v", initialTempo)
+    logger.Printf("Initial tempo: %v", initialTempo)
 
     masterVolume, err := reader.ReadByte()
     if err != nil {
         return nil, err
     }
-    log.Printf("Master volume: %v", masterVolume)
+    logger.Printf("Master volume: %v", masterVolume)
 
     // ultraclick removal, skip
     _, err = reader.ReadByte()
@@ -232,7 +232,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
     if err != nil {
         return nil, err
     }
-    log.Printf("Default panning: %v", defaultPanning)
+    logger.Printf("Default panning: %v", defaultPanning)
 
     // 8 more expansion bytes, skip
     _, err = reader.Discard(8)
@@ -245,7 +245,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
     if err != nil {
         return nil, err
     }
-    log.Printf("Special: %v", special)
+    logger.Printf("Special: %v", special)
 
     var channelSettings [32]byte
     _, err = io.ReadFull(reader, channelSettings[:])
@@ -258,13 +258,13 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
 
     channelCount := 0
     for i, setting := range channelSettings {
-        log.Printf("Channel %v setting: %v", i, setting < 16)
+        logger.Printf("Channel %v setting: %v", i, setting < 16)
         if setting < 16 {
             channelMap[i] = channelCount
 
             channelCount += 1
 
-            log.Printf("Channel %v default panning %v", i, setting)
+            logger.Printf("Channel %v default panning %v", i, setting)
 
             channelPanning[i] = setting
 
@@ -278,7 +278,7 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
         }
     }
 
-    log.Printf("Channels in use: %v", channelCount)
+    logger.Printf("Channels in use: %v", channelCount)
 
     numPatterns := 0
     var orders []byte
@@ -342,14 +342,14 @@ func Load(reader_ io.ReadSeeker) (*S3MFile, error) {
         for i := range data {
             // only use lower 4 bits
             data[i] = data[i] & 0xf
-            log.Printf("Panning for channel %v: %v", i, data[i])
+            logger.Printf("Panning for channel %v: %v", i, data[i])
         }
         // FIXME: do something with panning data
     }
 
     mono := (masterVolume & 128 == 0) || (masterVolume >> 7 == 0)
 
-    log.Printf("Mono: %v", mono)
+    logger.Printf("Mono: %v", mono)
 
     var instruments []Instrument
 
