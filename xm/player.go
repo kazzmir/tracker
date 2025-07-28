@@ -149,7 +149,7 @@ func (channel *Channel) UpdateRow() {
 
     /*
     if channel.Channel == 0 {
-        log.Printf("Channel %v: note %+v", channel.Channel, note)
+        log.Printf("Channel %v: note %+v volume %v", channel.Channel, note, note.HasVolume)
     }
     */
 
@@ -159,18 +159,19 @@ func (channel *Channel) UpdateRow() {
             newNote = 0 // No note
         }
         resetStartingPosition = true
-        channel.LastVolume = 64
-        channel.CurrentVolume = channel.LastVolume
-    }
-
-    if note.HasVolume {
-        channel.LastVolume = float32(note.Volume) - 16
         channel.CurrentVolume = channel.LastVolume
     }
 
     if note.HasInstrument {
         newInstrument = int(note.Instrument - 1)
+        channel.LastVolume = 64
+        channel.CurrentVolume = channel.LastVolume
         // log.Printf("Set instrument to %v", channel.CurrentInstrument)
+    }
+
+    if note.HasVolume {
+        channel.LastVolume = float32(note.Volume) - 16
+        channel.CurrentVolume = channel.LastVolume
     }
 
     if note.HasEffectType {
@@ -228,8 +229,14 @@ func (channel *Channel) UpdateRow() {
             case EffectVibrato:
                 channel.CurrentEffect = EffectVibrato
                 if note.EffectParameter > 0 {
-                    channel.Vibrato.Speed = int(note.EffectParameter >> 4)
-                    channel.Vibrato.Depth = int(note.EffectParameter & 0x0F)
+                    newSpeed := int(note.EffectParameter >> 4)
+                    newDepth := int(note.EffectParameter & 0x0F)
+                    if newSpeed > 0 {
+                        channel.Vibrato.Speed = newSpeed
+                    }
+                    if newDepth > 0 {
+                        channel.Vibrato.Depth = newDepth
+                    }
                 }
             case EffectMultiRetrigger:
                 channel.CurrentEffect = EffectMultiRetrigger
@@ -366,12 +373,12 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
                     channel.CurrentNote -= float32(channel.CurrentEffectParameter & 0x0F) / portamentoSlide
                     // log.Printf("Channel fine tune %v", channel.Finetune)
                 case ExtendedEffectFineVolumeSlideUp:
-                    channel.CurrentVolume += float32(channel.CurrentEffectParameter & 0x0F) / 16
+                    channel.CurrentVolume += float32(channel.CurrentEffectParameter & 0x0F) / 8
                     if channel.CurrentVolume > 64 {
                         channel.CurrentVolume = 64
                     }
                 case ExtendedEffectFineVolumeSlideDown:
-                    channel.CurrentVolume -= float32(channel.CurrentEffectParameter & 0x0F) / 16
+                    channel.CurrentVolume -= float32(channel.CurrentEffectParameter & 0x0F) / 8
                     if channel.CurrentVolume < 0 {
                         channel.CurrentVolume = 0
                     }
@@ -616,9 +623,10 @@ func MakePlayer(file *XMFile, sampleRate int) *Player {
 
     /*
     player.Order = 0
-    player.Channels = player.Channels[7:8]
     player.XMFile.Orders = player.XMFile.Orders[2:3]
     */
+
+    // player.Channels = player.Channels[2:3]
 
     /*
     for i := range player.Channels {
