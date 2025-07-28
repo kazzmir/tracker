@@ -550,8 +550,6 @@ func (channel *Channel) Read(data []byte) (int, error) {
 }
 
 type Player struct {
-    common.DummyPlayer
-
     XMFile *XMFile
     SampleRate int
     Order int
@@ -569,11 +567,6 @@ type Player struct {
     OnChangeOrder func(order int, pattern int)
     OnChangeSpeed func(speed int, bpm int)
 }
-
-/*
-RenderToPCM() io.Reader
-*/
-
 
 func MakePlayer(file *XMFile, sampleRate int) *Player {
 
