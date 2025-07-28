@@ -615,6 +615,7 @@ func MakePlayer(file *XMFile, sampleRate int) *Player {
             ScopeBuffer: common.MakeAudioBuffer(sampleRate * 2 / 10),
             Volume: 1.0,
             CurrentVolume: 64,
+            CurrentInstrument: -1,
             buffer: make([]float32, sampleRate),
             currentRow: -1,
         })

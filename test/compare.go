@@ -131,7 +131,7 @@ func allZeros(data []int) bool {
     return true
 }
 
-func compare(wav1 string, wav2 string) ([]float64, error) {
+func compare(wav1 string, wav2 string, seconds int) ([]float64, error) {
     file1, err := os.Open(wav1)
     if err != nil {
         return nil, err
@@ -154,7 +154,11 @@ func compare(wav1 string, wav2 string) ([]float64, error) {
     // log.Printf("Bytes per second: %d", bytesInSecond)
 
     bufferSize := bytesInSecond / 60
-    seconds := 4
+
+    // do whole file
+    if seconds < 0 {
+        seconds = 100000
+    }
 
     var scores []float64
 
@@ -168,7 +172,7 @@ func compare(wav1 string, wav2 string) ([]float64, error) {
 
         _, err := data1.PCMBuffer(&buffer1)
         if err != nil {
-            return nil, err
+            break
         }
 
         // log.Printf("Read %d samples from %s", n, wav1)
@@ -182,7 +186,7 @@ func compare(wav1 string, wav2 string) ([]float64, error) {
         }
         _, err = data2.PCMBuffer(&buffer2)
         if err != nil {
-            return nil, err
+            break
         }
 
         if allZeros(buffer1.Data) && allZeros(buffer2.Data) {
@@ -219,7 +223,7 @@ func renderScores(testFile string, scores []float64) {
     fmt.Println()
 }
 
-func runTest(testFile string, goldFile string) {
+func runTest(testFile string, goldFile string, seconds int) {
     tmpWav := "tmp.wav"
 
     sampleRate := 44100
@@ -234,7 +238,7 @@ func runTest(testFile string, goldFile string) {
         log.Fatalf("Error saving to WAV: %v", err)
     }
 
-    scoresGood, err := compare(tmpWav, goldFile)
+    scoresGood, err := compare(tmpWav, goldFile, seconds)
     if err != nil {
         log.Fatalf("Error comparing files: %v", err)
     }
@@ -243,8 +247,10 @@ func runTest(testFile string, goldFile string) {
 }
 
 func main() {
-    runTest("test/test.compat.xm", "test/test.gold.good.wav")
-    runTest("test/test1.xm", "test/test1.gold.wav")
+    runTest("test/test.compat.xm", "test/test.gold.good.wav", 4)
+    runTest("test/test1.xm", "test/test1.gold.wav", 4)
+    runTest("test/test2.xm", "test/test2.gold.wav", 34)
+    runTest("test/test3.xm", "test/test3.gold.wav", -1)
 
     /*
     wav1 := "test.wav"
