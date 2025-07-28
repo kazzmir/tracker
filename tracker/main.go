@@ -144,9 +144,36 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
         return mod.MakePlayer(loaded, engine.AudioContext.SampleRate()), nil
     }
 
+    loadXm := func() (TrackerPlayer, error) {
+        file, err := filesystem.Open(path)
+        if err != nil {
+            return nil, err
+        }
+        defer file.Close()
+
+        // FIXME: use a custom seekable buffering object that only loads sections
+        // of the file into memory as needed so that we abort loading a file if it
+        // is not an s3m
+        var buffer bytes.Buffer
+        _, err = io.Copy(&buffer, file)
+        if err != nil {
+            return nil, err
+        }
+
+        loaded, err := xm.Load(bytes.NewReader(buffer.Bytes()), log.Default())
+        if err != nil {
+            return nil, err
+        }
+
+        return xm.MakePlayer(loaded, engine.AudioContext.SampleRate()), nil
+    }
+
     player, err := loadS3m()
     if err != nil {
-        player, err = loadMod()
+        player, err = loadXm()
+        if err != nil {
+            player, err = loadMod()
+        }
     }
 
     if err != nil {
