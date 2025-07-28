@@ -14,11 +14,13 @@ import (
     "flag"
     "context"
     "runtime/pprof"
-    "encoding/binary"
 
     "github.com/kazzmir/tracker/mod"
     "github.com/kazzmir/tracker/s3m"
+    "github.com/kazzmir/tracker/xm"
     "github.com/kazzmir/tracker/data"
+    "github.com/kazzmir/tracker/common"
+    tracker_lib "github.com/kazzmir/tracker/lib"
 
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -118,7 +120,7 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
             return nil, err
         }
 
-        loaded, err := s3m.Load(bytes.NewReader(buffer.Bytes()))
+        loaded, err := s3m.Load(bytes.NewReader(buffer.Bytes()), log.Default())
         if err != nil {
             return nil, err
         }
@@ -142,9 +144,36 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
         return mod.MakePlayer(loaded, engine.AudioContext.SampleRate()), nil
     }
 
+    loadXm := func() (TrackerPlayer, error) {
+        file, err := filesystem.Open(path)
+        if err != nil {
+            return nil, err
+        }
+        defer file.Close()
+
+        // FIXME: use a custom seekable buffering object that only loads sections
+        // of the file into memory as needed so that we abort loading a file if it
+        // is not an s3m
+        var buffer bytes.Buffer
+        _, err = io.Copy(&buffer, file)
+        if err != nil {
+            return nil, err
+        }
+
+        loaded, err := xm.Load(bytes.NewReader(buffer.Bytes()), log.Default())
+        if err != nil {
+            return nil, err
+        }
+
+        return xm.MakePlayer(loaded, engine.AudioContext.SampleRate()), nil
+    }
+
     player, err := loadS3m()
     if err != nil {
-        player, err = loadMod()
+        player, err = loadXm()
+        if err != nil {
+            player, err = loadMod()
+        }
     }
 
     if err != nil {
@@ -295,44 +324,6 @@ func (engine *Engine) Layout(outsideWidth, outsideHeight int) (int, int) {
     return outsideWidth, outsideHeight
 }
 
-func saveToWav(path string, reader io.Reader, sampleRate int) error {
-    outputFile, err := os.Create(path)
-    if err != nil {
-        return err
-    }
-    defer outputFile.Close()
-
-    dataLength := int64(0)
-    bitsPerSample := 32
-    bytePerBloc := 2 * bitsPerSample / 8
-    bytePerSec := sampleRate * bytePerBloc // 2 channels, 32 bits per sample
-
-    binary.Write(outputFile, binary.LittleEndian, []byte("RIFF"))
-    binary.Write(outputFile, binary.LittleEndian, uint32(dataLength + 36))
-    binary.Write(outputFile, binary.LittleEndian, []byte("WAVE"))
-    binary.Write(outputFile, binary.LittleEndian, []byte("fmt "))
-    binary.Write(outputFile, binary.LittleEndian, uint32(16))  // BlocSize
-    binary.Write(outputFile, binary.LittleEndian, uint16(3))   // AudioFormat, IEEE float
-    binary.Write(outputFile, binary.LittleEndian, uint16(2))
-    binary.Write(outputFile, binary.LittleEndian, uint32(sampleRate))
-    binary.Write(outputFile, binary.LittleEndian, uint32(bytePerSec))
-    binary.Write(outputFile, binary.LittleEndian, uint16(bytePerBloc))
-    binary.Write(outputFile, binary.LittleEndian, uint16(bitsPerSample))
-    binary.Write(outputFile, binary.LittleEndian, []byte("data"))
-    binary.Write(outputFile, binary.LittleEndian, uint32(dataLength))
-    dataLength, err = io.Copy(outputFile, reader)
-
-    // now that we know the data length, we can go back and write it in the header
-    outputFile.Seek(4, io.SeekStart)
-    binary.Write(outputFile, binary.LittleEndian, uint32(dataLength + 36))
-    outputFile.Seek(40, io.SeekStart)
-    binary.Write(outputFile, binary.LittleEndian, uint32(dataLength))
-
-    log.Printf("Copied %v bytes to %v", dataLength, path)
-
-    return err
-}
-
 func tryLoadS3m(path string) (*s3m.S3MFile, error) {
     file, err := os.Open(path)
     if err != nil {
@@ -340,7 +331,7 @@ func tryLoadS3m(path string) (*s3m.S3MFile, error) {
     }
     defer file.Close()
 
-    return s3m.Load(file)
+    return s3m.Load(file, log.Default())
 }
 
 func tryLoadMod(path string) (*mod.ModFile, error) {
@@ -353,6 +344,38 @@ func tryLoadMod(path string) (*mod.ModFile, error) {
     return mod.Load(file)
 }
 
+func tryLoadXM(path string) (*xm.XMFile, error) {
+    file, err := os.Open(path)
+    if err != nil {
+        return nil, err
+    }
+
+    defer file.Close()
+
+    return xm.Load(file, log.Default())
+}
+
+func TryLoad(path string, sampleRate int) (TrackerPlayer, error) {
+    s3mFile, err := tryLoadS3m(path)
+    if err == nil {
+        return s3m.MakePlayer(s3mFile, sampleRate), nil
+    }
+
+    log.Printf("Unable to load s3m: %v", err)
+
+    xmFile, err := tryLoadXM(path)
+    if err == nil {
+        return xm.MakePlayer(xmFile, sampleRate), nil
+    }
+
+    log.Printf("Unable to load xm: %v", err)
+
+    modFile, err := tryLoadMod(path)
+    if err != nil {
+        return nil, err
+    }
+    return mod.MakePlayer(modFile, sampleRate), nil
+}
 
 func runGui(player TrackerPlayer, sampleRate int, quit context.Context) error {
     fps := 30
@@ -410,6 +433,7 @@ func main(){
         defer pprof.StopCPUProfile()
     }
 
+    var player TrackerPlayer = &common.DummyPlayer{}
     quit, cancel := context.WithCancel(context.Background())
     defer cancel()
     signalChan := make(chan os.Signal, 2)
@@ -419,28 +443,16 @@ func main(){
     }()
     signal.Notify(signalChan, os.Interrupt)
 
-    var player TrackerPlayer = &DummyPlayer{}
-
     sampleRate := 44100
 
     if len(flag.Args()) > 0 {
         path := flag.Args()[0]
 
-        s3mFile, err := tryLoadS3m(path)
+        var err error
+        player, err = TryLoad(path, sampleRate)
         if err != nil {
-            log.Printf("Unable to load s3m: %v", err)
-
-            modFile, err := tryLoadMod(path)
-            if err != nil {
-                log.Printf("Error loading %v: %v", path, err)
-                return
-            } else {
-                player = mod.MakePlayer(modFile, sampleRate)
-                log.Printf("Successfully loaded %v", path)
-                log.Printf("Mod name: '%v'", modFile.Name)
-            }
-        } else {
-            player = s3m.MakePlayer(s3mFile, sampleRate)
+            log.Printf("Error loading module: %v", err)
+            return
         }
     } else {
         /*
@@ -466,7 +478,7 @@ func main(){
     if *wav != "" {
         log.Printf("Rendering to %v", *wav)
 
-        err := saveToWav(*wav, player.RenderToPCM(), sampleRate)
+        err := tracker_lib.SaveToWav(*wav, player.RenderToPCM(), sampleRate, log.Default())
         if err != nil {
             log.Printf("Error saving to wav: %v", err)
             return
