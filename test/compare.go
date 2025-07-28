@@ -201,8 +201,9 @@ func compare(wav1 string, wav2 string) ([]float64, error) {
 
 func renderScores(testFile string, scores []float64) {
     good := color.New(color.FgGreen)
-    ok := color.New(color.FgYellow)
+    ok := color.New(color.FgCyan)
     bad := color.New(color.FgRed)
+    warn := color.New(color.FgHiYellow)
 
     fmt.Printf("%v: ", testFile)
 
@@ -210,6 +211,7 @@ func renderScores(testFile string, scores []float64) {
         switch {
             case score >= 0.93: good.Print("+")
             case score >= 0.85: ok.Print("o")
+            case score >= 0.75: warn.Print("x")
             default: bad.Print("-")
         }
     }
@@ -217,13 +219,10 @@ func renderScores(testFile string, scores []float64) {
     fmt.Println()
 }
 
-func main() {
-
+func runTest(testFile string, goldFile string) {
     tmpWav := "tmp.wav"
 
     sampleRate := 44100
-
-    testFile := "test/test.compat.xm"
 
     player, err := TryLoad(testFile, sampleRate)
     if err != nil {
@@ -235,15 +234,17 @@ func main() {
         log.Fatalf("Error saving to WAV: %v", err)
     }
 
-    wav2 := "test.gold.good.wav"
-
-    scoresGood, err := compare(tmpWav, wav2)
+    scoresGood, err := compare(tmpWav, goldFile)
     if err != nil {
         log.Fatalf("Error comparing files: %v", err)
     }
 
     renderScores(testFile, scoresGood)
+}
 
+func main() {
+    runTest("test/test.compat.xm", "test/test.gold.good.wav")
+    runTest("test/test1.xm", "test/test1.gold.wav")
 
     /*
     wav1 := "test.wav"
