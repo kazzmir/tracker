@@ -427,7 +427,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     controlsContainer.AddChild(volumeLabel)
 
     volumeSlider := widget.NewSlider(
-        widget.SliderOpts.Direction(widget.DirectionHorizontal),
+        widget.SliderOpts.Orientation(widget.DirectionHorizontal),
         widget.SliderOpts.MinMax(0, 100),
         widget.SliderOpts.WidgetOpts(
             widget.WidgetOpts.LayoutData(widget.RowLayoutData{
