@@ -4,6 +4,8 @@ import (
     "image/color"
     "image"
     "bytes"
+    "hash/fnv"
+    "math"
     _ "embed"
     "runtime"
     "log"
@@ -17,6 +19,7 @@ import (
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/text/v2"
     "github.com/hajimehoshi/ebiten/v2/vector"
+    "github.com/hajimehoshi/ebiten/v2/colorm"
 
     "github.com/ebitenui/ebitenui"
     "github.com/ebitenui/ebitenui/widget"
@@ -148,6 +151,28 @@ func makeNoteView(player UIPlayer, face *text.Face) (UIHooks, *widget.Container)
         container.AddChild(noteContainer)
     }
 
+    noteColorCache := make(map[string]color.Color)
+
+    noteColor := func(note common.NoteInfo) color.Color {
+        cached, ok := noteColorCache[note.GetSampleName()]
+        if ok {
+            return cached
+        }
+
+        sample := note.GetSampleName()
+        // get hash of sample name, then put into range 0-360 and get HSV color
+        hash := fnv.New32a()
+        hash.Write([]byte(sample))
+        hashValue := hash.Sum32()
+        hue := float64(hashValue % 360)
+
+        var matrix colorm.ColorM
+        matrix.ChangeHSV(hue / 360.0 * math.Pi * 2, 1.0, 1.0)
+        out := matrix.Apply(color.RGBA{R: 255, A: 255})
+        noteColorCache[sample] = out
+        return out
+    }
+
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
 
@@ -155,7 +180,7 @@ func makeNoteView(player UIPlayer, face *text.Face) (UIHooks, *widget.Container)
                 note, ok := player.GetRowNoteInfo(channel, row)
                 if ok && note.GetNotePosition() > 0 {
                     noteGraphics[channel].Clear()
-                    vector.DrawFilledCircle(noteGraphics[channel], float32(note.GetNotePosition() * 4), float32(faceHeight / 2), 4, color.NRGBA{R: 255, G: 0, B: 0, A: 255}, true)
+                    vector.DrawFilledCircle(noteGraphics[channel], float32(note.GetNotePosition() * 4), float32(faceHeight / 2), 4, noteColor(note), true)
                 }
             }
         },
