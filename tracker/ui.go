@@ -5,6 +5,7 @@ import (
     "image"
     "bytes"
     _ "embed"
+    "runtime"
     "log"
     "fmt"
     "time"
@@ -524,7 +525,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         )),
     )
 
-    var updateScopes func()
+    updateScopes := func() {}
 
     setupOscilloscopes := func() {
         var scopes []*ebiten.Image
@@ -551,6 +552,10 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     }
 
     showOscilloscopes := true
+    if runtime.GOOS == "js" {
+        // don't show oscilloscopes in the browser
+        showOscilloscopes = false
+    }
     toggleOscilloscopes := func() {
         showOscilloscopes = !showOscilloscopes
         if showOscilloscopes {
@@ -562,7 +567,9 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         }
     }
 
-    setupOscilloscopes()
+    if showOscilloscopes {
+        setupOscilloscopes()
+    }
 
     moreInfoContainer.AddChild(widget.NewButton(
         widget.ButtonOpts.Image(buttonImage),
