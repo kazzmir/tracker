@@ -105,6 +105,55 @@ func ptr[T any](v T) *T {
     return &v
 }
 
+func makeNoteView(player UIPlayer, face *text.Face) (UIHooks, *widget.Container) {
+    _, faceHeight := text.Measure("A", *face, 0)
+
+    container := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+            widget.RowLayoutOpts.Spacing(2),
+        )),
+    )
+
+    for i := range player.GetChannelCount() {
+        backgroundColor := color.NRGBA{R: 32, G: 32, B: 32, A: 255}
+        if i % 2 == 0 {
+            backgroundColor = color.NRGBA{R: 64, G: 64, B: 64, A: 255}
+        }
+
+        noteContainer := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+                widget.RowLayoutOpts.Spacing(3),
+            )),
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(backgroundColor)),
+        )
+
+        noteContainer.AddChild(widget.NewText(
+            widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
+        ))
+
+        graphics := ebiten.NewImage(500, int(faceHeight))
+
+        noteGraphics := widget.NewGraphic(
+            widget.GraphicOpts.Image(graphics),
+        )
+
+        noteContainer.AddChild(noteGraphics)
+
+        container.AddChild(noteContainer)
+    }
+
+    uiHooks := UIHooks{
+        UpdateRow: func(row int) {
+        },
+        UpdateOrder: func(order int, pattern int) {
+        },
+    }
+
+    return uiHooks, container
+}
+
 func makeChannelView(player UIPlayer, face *text.Face) (UIHooks, *widget.Container) {
     channels := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
@@ -875,8 +924,12 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     rootContainer.AddChild(oscilloscopes)
 
+    /*
     channelHooks, channelUI := makeChannelView(player, &face)
     rootContainer.AddChild(channelUI)
+    */
+    noteHooks, noteUI := makeNoteView(player, &face)
+    rootContainer.AddChild(noteUI)
 
     // rootContainer.AddChild(channels)
 
@@ -884,10 +937,12 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
-            channelHooks.UpdateRow(row)
+            // channelHooks.UpdateRow(row)
+            noteHooks.UpdateRow(row)
         },
         UpdateOrder: func(order int, pattern int) {
-            channelHooks.UpdateOrder(order, pattern)
+            // channelHooks.UpdateOrder(order, pattern)
+            noteHooks.UpdateOrder(order, pattern)
 
             orderText.Label = fmt.Sprintf("Order: %v/%v", order, player.GetSongLength())
             patternText.Label = fmt.Sprintf("Pattern: %d", pattern)
