@@ -105,7 +105,7 @@ func ptr[T any](v T) *T {
     return &v
 }
 
-func makeMoreInfo(player UIPlayer, face *text.Face) (UIHooks, *widget.Container) {
+func makeChannelView(player UIPlayer, face *text.Face) (UIHooks, *widget.Container) {
     channels := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
             widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
@@ -875,8 +875,8 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     rootContainer.AddChild(oscilloscopes)
 
-    infoHooks, infoUI := makeMoreInfo(player, &face)
-    rootContainer.AddChild(infoUI)
+    channelHooks, channelUI := makeChannelView(player, &face)
+    rootContainer.AddChild(channelUI)
 
     // rootContainer.AddChild(channels)
 
@@ -884,10 +884,10 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
-            infoHooks.UpdateRow(row)
+            channelHooks.UpdateRow(row)
         },
         UpdateOrder: func(order int, pattern int) {
-            infoHooks.UpdateOrder(order, pattern)
+            channelHooks.UpdateOrder(order, pattern)
 
             orderText.Label = fmt.Sprintf("Order: %v/%v", order, player.GetSongLength())
             patternText.Label = fmt.Sprintf("Pattern: %d", pattern)
