@@ -73,8 +73,8 @@ func (player *DummyPlayer) SetOnChangeSpeed(onChangeSpeed func(int, int)) {
 func (player *DummyPlayer) Update(delta float32) {
 }
 
-func (player *DummyPlayer) GetRowNoteInfo(channel int, row int) NoteInfo {
-    return nil
+func (player *DummyPlayer) GetRowNoteInfo(channel int, row int) (NoteInfo, bool) {
+    return nil, false
 }
 
 func (player *DummyPlayer) GetChannelReaders() []io.Reader {

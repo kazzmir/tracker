@@ -86,7 +86,7 @@ type UIPlayer interface {
     GetSpeed() int
     GetBPM() int
     GetChannelCount() int
-    GetRowNoteInfo(channel int, row int) common.NoteInfo
+    GetRowNoteInfo(channel int, row int) (common.NoteInfo, bool)
     GetChannelData(channel int, data []float32) int
     ToggleMuteChannel(channel int) bool
     IsStereo() bool
@@ -115,6 +115,8 @@ func makeNoteView(player UIPlayer, face *text.Face) (UIHooks, *widget.Container)
         )),
     )
 
+    var noteGraphics []*ebiten.Image
+
     for i := range player.GetChannelCount() {
         backgroundColor := color.NRGBA{R: 32, G: 32, B: 32, A: 255}
         if i % 2 == 0 {
@@ -135,6 +137,8 @@ func makeNoteView(player UIPlayer, face *text.Face) (UIHooks, *widget.Container)
 
         graphics := ebiten.NewImage(500, int(faceHeight))
 
+        noteGraphics = append(noteGraphics, graphics)
+
         noteGraphics := widget.NewGraphic(
             widget.GraphicOpts.Image(graphics),
         )
@@ -146,6 +150,14 @@ func makeNoteView(player UIPlayer, face *text.Face) (UIHooks, *widget.Container)
 
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
+
+            for channel := range noteGraphics {
+                note, ok := player.GetRowNoteInfo(channel, row)
+                if ok && note.GetNotePosition() > 0 {
+                    noteGraphics[channel].Clear()
+                    vector.DrawFilledCircle(noteGraphics[channel], float32(note.GetNotePosition() * 4), float32(faceHeight / 2), 4, color.NRGBA{R: 255, G: 0, B: 0, A: 255}, true)
+                }
+            }
         },
         UpdateOrder: func(order int, pattern int) {
         },
@@ -315,7 +327,10 @@ func makeChannelView(player UIPlayer, face *text.Face) (UIHooks, *widget.Contain
             container := channelColumn[i]
 
             for row := range 64 {
-                note := player.GetRowNoteInfo(i, row)
+                note, ok := player.GetRowNoteInfo(i, row)
+                if !ok {
+                    continue
+                }
 
                 noteName := note.GetName()
                 if noteName == "" {

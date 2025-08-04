@@ -135,8 +135,8 @@ func (channel *Channel) GetRightPan() float32 {
 func (channel *Channel) UpdateRow() {
     channel.currentRow = channel.player.CurrentRow
 
-    note := channel.player.GetRowNote(channel.Channel, channel.currentRow)
-    if note == nil {
+    note, ok := channel.player.GetRowNote(channel.Channel, channel.currentRow)
+    if !ok {
         return
     }
 
@@ -742,23 +742,25 @@ func (player *Player) GetInstrument(instrument int) *Instrument {
     return player.XMFile.Instruments[instrument]
 }
 
-func (player *Player) GetRowNote(channel int, row int) *Note {
+func (player *Player) GetRowNote(channel int, row int) (*Note, bool) {
     pattern := player.XMFile.GetPattern(player.Order)
     notes := pattern.GetRow(row, player.XMFile.Channels)
     if channel < 0 || channel >= len(notes) {
-        return nil
+        return nil, false
     }
 
-    return &notes[channel]
+    return &notes[channel], true
 }
 
-func (player *Player) GetRowNoteInfo(channel int, row int) common.NoteInfo {
-    note := player.GetRowNote(channel, row)
+func (player *Player) GetRowNoteInfo(channel int, row int) (common.NoteInfo, bool) {
+    return player.GetRowNote(channel, row)
+    /*
     if note == nil {
         return nil
     }
 
     return note
+    */
 }
 
 func (player *Player) GetCurrentOrder() int {

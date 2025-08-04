@@ -41,6 +41,13 @@ type Note struct {
     HasEffectParameter bool
 }
 
+func (note *Note) GetNotePosition() int {
+    if !note.HasNote {
+        return -1
+    }
+    return int(note.NoteNumber) // 0-96
+}
+
 func (note *Note) GetName() string {
     return note.GetNoteName()
 }

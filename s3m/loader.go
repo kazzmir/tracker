@@ -64,6 +64,14 @@ type Note struct {
     Channel int // 0-31
 }
 
+func (note *Note) GetNotePosition() int {
+    if note.ChangeNote {
+        return note.Note
+    }
+
+    return 0
+}
+
 func (note *Note) GetName() string {
     if note.ChangeNote {
         octave := note.Note / 16
