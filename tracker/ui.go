@@ -135,7 +135,7 @@ func makeNoteView(player UIPlayer, face *text.Face) (UIHooks, *widget.Container)
         )
 
         noteContainer.AddChild(widget.NewText(
-            widget.TextOpts.Text(fmt.Sprintf("Channel %d", i+1), face, color.White),
+            widget.TextOpts.Text(fmt.Sprintf("Channel %02d", i+1), face, color.White),
         ))
 
         graphics := ebiten.NewImage(500, int(faceHeight))
@@ -179,6 +179,7 @@ func makeNoteView(player UIPlayer, face *text.Face) (UIHooks, *widget.Container)
             for channel := range noteGraphics {
                 note, ok := player.GetRowNoteInfo(channel, row)
                 if ok && note.GetNotePosition() > 0 {
+                    // log.Printf("Update row %d channel %d note %v", row, channel, note.GetNotePosition())
                     noteGraphics[channel].Clear()
                     vector.DrawFilledCircle(noteGraphics[channel], float32(note.GetNotePosition() * 4), float32(faceHeight / 2), 4, noteColor(note), true)
                 }

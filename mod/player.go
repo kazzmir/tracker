@@ -170,6 +170,33 @@ func semitoneToNote(semitone int) string {
     return "?"
 }
 
+func noteValue(period uint16) int {
+    c3 := 856
+    c4 := 428
+    c5 := 214
+
+    cValues := map[int]int{
+        c3: 3,
+        c4: 4,
+        c5: 5,
+    }
+
+    for frequency, octave := range cValues {
+        for semitone := range 12 {
+            newFrequency := addSemitones(frequency, semitone)
+            diff := newFrequency - int(period)
+            if diff < 0 {
+                diff = -diff
+            }
+            if diff <= 2 {
+                return semitone + octave * 12
+            }
+        }
+    }
+
+    return 0
+}
+
 // convert a note period to a note name.
 // 428 = C-4
 func ConvertToNote(period uint16) string {

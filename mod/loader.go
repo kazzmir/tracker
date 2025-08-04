@@ -47,7 +47,7 @@ type Note struct {
 }
 
 func (note *Note) GetNotePosition() int {
-    return int(note.PeriodFrequency / 5000)
+    return noteValue(note.PeriodFrequency)
 }
 
 func (note *Note) GetEffectName() string {
