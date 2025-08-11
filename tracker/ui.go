@@ -1002,12 +1002,14 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
-            // channelHooks.UpdateRow(row)
-            currentHooks.UpdateRow(row)
+            channelHooks.UpdateRow(row)
+            noteHooks.UpdateRow(row)
+            // currentHooks.UpdateRow(row)
         },
         UpdateOrder: func(order int, pattern int) {
-            // channelHooks.UpdateOrder(order, pattern)
-            currentHooks.UpdateOrder(order, pattern)
+            channelHooks.UpdateOrder(order, pattern)
+            noteHooks.UpdateOrder(order, pattern)
+            // currentHooks.UpdateOrder(order, pattern)
 
             orderText.Label = fmt.Sprintf("Order: %v/%v", order, player.GetSongLength())
             patternText.Label = fmt.Sprintf("Pattern: %d", pattern)
