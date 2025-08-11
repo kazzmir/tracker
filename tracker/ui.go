@@ -37,6 +37,7 @@ type UIHooks struct {
     Pause func()
     RenderScopes func()
     ToggleOscilloscopes func()
+    ToggleMainView func()
 }
 func loadFont(size float64) (text.Face, error) {
     source, err := text.NewGoTextFaceSource(bytes.NewReader(FuturaTTF))
@@ -965,12 +966,31 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     rootContainer.AddChild(oscilloscopes)
 
-    /*
+    mainView := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout()),
+    )
+
     channelHooks, channelUI := makeChannelView(player, &face)
-    rootContainer.AddChild(channelUI)
-    */
+    mainView.AddChild(channelUI)
+
     noteHooks, noteUI := makeNoteView(player, &face)
-    rootContainer.AddChild(noteUI)
+    // mainView.AddChild(noteUI)
+
+    currentHooks := &channelHooks
+
+    changeMainView := func() {
+        mainView.RemoveChildren()
+
+        if currentHooks == &channelHooks {
+            mainView.AddChild(noteUI)
+            currentHooks = &noteHooks
+        } else {
+            mainView.AddChild(channelUI)
+            currentHooks = &channelHooks
+        }
+    }
+
+    rootContainer.AddChild(mainView)
 
     // rootContainer.AddChild(channels)
 
@@ -979,11 +999,11 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
             // channelHooks.UpdateRow(row)
-            noteHooks.UpdateRow(row)
+            currentHooks.UpdateRow(row)
         },
         UpdateOrder: func(order int, pattern int) {
             // channelHooks.UpdateOrder(order, pattern)
-            noteHooks.UpdateOrder(order, pattern)
+            currentHooks.UpdateOrder(order, pattern)
 
             orderText.Label = fmt.Sprintf("Order: %v/%v", order, player.GetSongLength())
             patternText.Label = fmt.Sprintf("Pattern: %d", pattern)
@@ -1003,6 +1023,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         RenderScopes: func() {
             updateScopes()
         },
+        ToggleMainView: changeMainView,
     }
 
     uiHooks.UpdateRow(0)
