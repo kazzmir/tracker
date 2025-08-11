@@ -792,6 +792,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     volumeSlider := widget.NewSlider(
         widget.SliderOpts.Orientation(widget.DirectionHorizontal),
         widget.SliderOpts.MinMax(0, 100),
+        widget.SliderOpts.TabOrder(-1),
         widget.SliderOpts.WidgetOpts(
             widget.WidgetOpts.LayoutData(widget.RowLayoutData{
                 Stretch: true,
@@ -854,6 +855,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         widget.ButtonOpts.Text("(L)oad Song", &face, &widget.ButtonTextColor{
             Idle: color.White,
         }),
+        widget.ButtonOpts.TabOrder(-1),
         widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
             showLoadWindow()
         }),
@@ -870,6 +872,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         widget.ButtonOpts.Text("(P)ause/Unpause", &face, &widget.ButtonTextColor{
             Idle: color.White,
         }),
+        widget.ButtonOpts.TabOrder(-1),
         widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
             doPause()
         }),
@@ -939,6 +942,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         widget.ButtonOpts.Text("(T)oggle oscilloscopes", &face, &widget.ButtonTextColor{
             Idle: color.White,
         }),
+        widget.ButtonOpts.TabOrder(-1),
         widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
             toggleOscilloscopes()
         }),
