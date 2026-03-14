@@ -4,7 +4,10 @@ import (
     "image/color"
     "image"
     "bytes"
+    "hash/fnv"
+    "math"
     _ "embed"
+    "runtime"
     "log"
     "fmt"
     "time"
@@ -16,6 +19,7 @@ import (
     "github.com/hajimehoshi/ebiten/v2"
     "github.com/hajimehoshi/ebiten/v2/text/v2"
     "github.com/hajimehoshi/ebiten/v2/vector"
+    "github.com/hajimehoshi/ebiten/v2/colorm"
 
     "github.com/ebitenui/ebitenui"
     "github.com/ebitenui/ebitenui/widget"
@@ -33,6 +37,7 @@ type UIHooks struct {
     Pause func()
     RenderScopes func()
     ToggleOscilloscopes func()
+    ToggleMainView func()
 }
 func loadFont(size float64) (text.Face, error) {
     source, err := text.NewGoTextFaceSource(bytes.NewReader(FuturaTTF))
@@ -85,7 +90,7 @@ type UIPlayer interface {
     GetSpeed() int
     GetBPM() int
     GetChannelCount() int
-    GetRowNoteInfo(channel int, row int) common.NoteInfo
+    GetRowNoteInfo(channel int, row int) (common.NoteInfo, bool)
     GetChannelData(channel int, data []float32) int
     ToggleMuteChannel(channel int) bool
     IsStereo() bool
@@ -102,6 +107,365 @@ type SystemInterface interface {
 
 func ptr[T any](v T) *T {
     return &v
+}
+
+func makeNoteView(player UIPlayer, face *text.Face) (UIHooks, *widget.Container) {
+    _, faceHeight := text.Measure("A", *face, 0)
+
+    container := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+            widget.RowLayoutOpts.Spacing(2),
+        )),
+    )
+
+    var noteGraphics []*ebiten.Image
+
+    for i := range player.GetChannelCount() {
+        backgroundColor := color.NRGBA{R: 32, G: 32, B: 32, A: 255}
+        if i % 2 == 0 {
+            backgroundColor = color.NRGBA{R: 64, G: 64, B: 64, A: 255}
+        }
+
+        noteContainer := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+                widget.RowLayoutOpts.Spacing(3),
+            )),
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(backgroundColor)),
+        )
+
+        noteContainer.AddChild(widget.NewText(
+            widget.TextOpts.Text(fmt.Sprintf("Channel %02d", i+1), face, color.White),
+        ))
+
+        graphics := ebiten.NewImage(500, int(faceHeight))
+
+        noteGraphics = append(noteGraphics, graphics)
+
+        noteGraphics := widget.NewGraphic(
+            widget.GraphicOpts.Image(graphics),
+        )
+
+        noteContainer.AddChild(noteGraphics)
+
+        container.AddChild(noteContainer)
+    }
+
+    noteColorCache := make(map[string]color.Color)
+
+    noteColor := func(note common.NoteInfo) color.Color {
+        cached, ok := noteColorCache[note.GetSampleName()]
+        if ok {
+            return cached
+        }
+
+        sample := note.GetSampleName()
+        // get hash of sample name, then put into range 0-360 and get HSV color
+        hash := fnv.New32a()
+        hash.Write([]byte(sample))
+        hashValue := hash.Sum32()
+        hue := float64(hashValue % 360)
+
+        var matrix colorm.ColorM
+        matrix.ChangeHSV(hue / 360.0 * math.Pi * 2, 1.0, 1.0)
+        out := matrix.Apply(color.RGBA{R: 255, A: 255})
+        noteColorCache[sample] = out
+        return out
+    }
+
+    uiHooks := UIHooks{
+        UpdateRow: func(row int) {
+
+            for channel := range noteGraphics {
+                note, ok := player.GetRowNoteInfo(channel, row)
+                if ok && note.GetNotePosition() > 0 {
+                    // log.Printf("Update row %d channel %d note %v", row, channel, note.GetNotePosition())
+                    noteGraphics[channel].Clear()
+                    vector.DrawFilledCircle(noteGraphics[channel], float32(note.GetNotePosition() * 4), float32(faceHeight / 2), 4, noteColor(note), true)
+                }
+            }
+        },
+        UpdateOrder: func(order int, pattern int) {
+        },
+    }
+
+    return uiHooks, container
+}
+
+func makeChannelView(player UIPlayer, face *text.Face) (UIHooks, *widget.Container) {
+    channels := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+            widget.RowLayoutOpts.Spacing(8),
+        )),
+    )
+
+    rowNumbers := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+            widget.RowLayoutOpts.Spacing(2),
+        )),
+    )
+
+    var rowContainers [][]*widget.Container
+
+    for i := range 64 {
+        textColor := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+        if (i + 1) % 4 == 0 {
+            textColor = color.RGBA{R: 200, G: 200, B: 0, A: 255}
+        }
+
+        container := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                widget.RowLayoutOpts.Spacing(2),
+            )),
+        )
+
+        rowContainers = append(rowContainers, []*widget.Container{container})
+
+        container.AddChild(widget.NewText(
+            widget.TextOpts.Text(fmt.Sprintf("%02X", i), face, textColor),
+        ))
+
+        rowNumbers.AddChild(container)
+    }
+
+    for range 32 {
+        rowNumbers.AddChild(widget.NewText(
+            widget.TextOpts.Text("-", face, color.White),
+        ))
+    }
+
+    makeRowScroller := func(content *widget.Container) *widget.ScrollContainer {
+        return widget.NewScrollContainer(
+            widget.ScrollContainerOpts.Content(content),
+            widget.ScrollContainerOpts.StretchContentWidth(),
+            widget.ScrollContainerOpts.WidgetOpts(
+                widget.WidgetOpts.LayoutData(widget.RowLayoutData{
+                    // FIXME: use a grid layout to automatically stretch the container
+                    // row layout doesn't seem to stretch the container to the viewable area
+                    MaxHeight: 650,
+                }),
+            ),
+            widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
+                Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
+                Mask: ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 255, B: 255, A: 255}),
+            }),
+        )
+    }
+
+    var scrollers []*widget.ScrollContainer
+
+    rowNumberScroller := makeRowScroller(rowNumbers)
+    // rootContainer.AddChild(rowNumberScroller)
+    scrollers = append(scrollers, rowNumberScroller)
+
+    extraContainer := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+            widget.RowLayoutOpts.Spacing(2),
+        )),
+        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
+    )
+    extraContainer.AddChild(widget.NewText(
+        widget.TextOpts.Text(" ", face, color.White),
+    ))
+    extraContainer.AddChild(rowNumberScroller)
+
+    channels.AddChild(extraContainer)
+
+    var removeChannels []widget.RemoveChildFunc
+
+    var channelColumn []*widget.Container
+    for i := range player.GetChannelCount() {
+        column := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                widget.RowLayoutOpts.Spacing(2),
+            )),
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
+        )
+
+        var channelButton *widget.Button
+
+        unmutedImage := &widget.ButtonImage{
+            Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
+            // Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
+            Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x92, G: 0x34, B: 0x14, A: 255}),
+            Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
+            PressedHover: ui_image.NewNineSliceColor(color.NRGBA{R: 0xd6, G: 0x33, B: 0x15, A: 255}),
+        }
+
+        channelButton = widget.NewButton(
+            widget.ButtonOpts.Image(unmutedImage),
+            widget.ButtonOpts.Text(fmt.Sprintf("Channel %d", i+1), face, &widget.ButtonTextColor{
+                Idle: color.White,
+            }),
+            widget.ButtonOpts.ToggleMode(),
+            widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
+                player.ToggleMuteChannel(i)
+            }),
+            widget.ButtonOpts.TextPadding(&widget.Insets{
+                Left: 1,
+                Top: 1,
+                Bottom: 1,
+                Right: 1,
+            }),
+        )
+
+        column.AddChild(channelButton)
+
+        background := color.NRGBA{R: 64, G: 64, B: 64, A: 255}
+        if i % 2 == 0 {
+            background = color.NRGBA{R: 96, G: 96, B: 96, A: 255}
+        }
+
+        data := widget.NewContainer(
+            widget.ContainerOpts.Layout(widget.NewRowLayout(
+                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                widget.RowLayoutOpts.Spacing(2),
+            )),
+            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(background)),
+        )
+
+        scroller := makeRowScroller(data)
+        scrollers = append(scrollers, scroller)
+
+        column.AddChild(scroller)
+
+        channelColumn = append(channelColumn, data)
+        channels.AddChild(column)
+    }
+
+    setupChannels := func(){
+        for _, remove := range removeChannels {
+            remove()
+        }
+
+        removeChannels = nil
+
+        for row := range 64 {
+            rowContainers[row] = rowContainers[row][1:]
+        }
+
+        for i := range player.GetChannelCount() {
+            container := channelColumn[i]
+
+            for row := range 64 {
+                note, ok := player.GetRowNoteInfo(i, row)
+                if !ok {
+                    continue
+                }
+
+                noteName := note.GetName()
+                if noteName == "" {
+                    noteName = "..."
+                }
+                /*
+                if note.PeriodFrequency > 0 {
+                    noteName = fmt.Sprintf("%v", mod.ConvertToNote(note.PeriodFrequency))
+                    // noteList.AddEntry(name)
+                }
+                */
+
+                sampleName := note.GetSampleName()
+                /*
+                if note.SampleNumber > 0 {
+                    sampleName = fmt.Sprintf("%02X", note.SampleNumber)
+                }
+                */
+
+                // effectName := "..."
+                effectName := note.GetEffectName()
+                /*
+                if note.EffectNumber > 0 || note.EffectParameter > 0 {
+                    effectName = fmt.Sprintf("%X%02X", note.EffectNumber, note.EffectParameter)
+                }
+                */
+
+                textContainer := widget.NewContainer(
+                    widget.ContainerOpts.Layout(widget.NewRowLayout(
+                        widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                        widget.RowLayoutOpts.Spacing(2),
+                    )),
+                )
+
+                textContainer.AddChild(widget.NewText(
+                    widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
+                    widget.TextOpts.Text(fmt.Sprintf("%v %v %v", noteName, sampleName, effectName), face, color.White),
+                ))
+
+                rowContainers[row] = append(rowContainers[row], textContainer)
+                removeChannels = append(removeChannels, container.AddChild(textContainer))
+            }
+
+            for range 32 {
+                textContainer := widget.NewContainer(
+                    widget.ContainerOpts.Layout(widget.NewRowLayout(
+                        widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+                        widget.RowLayoutOpts.Spacing(2),
+                    )),
+                )
+
+                textContainer.AddChild(widget.NewText(
+                    widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
+                    widget.TextOpts.Text("-", face, color.White),
+                ))
+
+                removeChannels = append(removeChannels, container.AddChild(textContainer))
+            }
+        }
+    }
+
+    setupChannels()
+
+    /*
+    container := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+            widget.RowLayoutOpts.Spacing(2),
+            // widget.RowLayoutOpts.Padding(widget.Insets{Top: 0, Bottom: 0}),
+        )),
+        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
+    )
+
+    // container.AddChild(rowNumbers)
+    container.AddChild(channels)
+    */
+
+    currentRowHighlight := 0
+
+    uiHooks := UIHooks{
+        UpdateRow: func(row int) {
+            if row < len(rowContainers) {
+                top := row - 10
+                if top < 0 {
+                    top = 0
+                }
+                position := float64(top) / (64 + 10)
+
+                for _, scroller := range scrollers {
+                    scroller.ScrollTop = position
+                }
+                // log.Printf("Set scroll top to %v", rowScroll.ScrollTop)
+
+                for _, container := range rowContainers[currentRowHighlight] {
+                    container.SetBackgroundImage(nil)
+                }
+                currentRowHighlight = row
+                for _, container := range rowContainers[row] {
+                    container.SetBackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128}))
+                }
+            }
+        },
+        UpdateOrder: func(order int, pattern int) {
+            setupChannels()
+        },
+    }
+
+    return uiHooks, channels
 }
 
 // data is an array of float32 sample values representing the audio waveform, in stereo
@@ -426,8 +790,9 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     controlsContainer.AddChild(volumeLabel)
 
     volumeSlider := widget.NewSlider(
-        widget.SliderOpts.Direction(widget.DirectionHorizontal),
+        widget.SliderOpts.Orientation(widget.DirectionHorizontal),
         widget.SliderOpts.MinMax(0, 100),
+        widget.SliderOpts.TabOrder(-1),
         widget.SliderOpts.WidgetOpts(
             widget.WidgetOpts.LayoutData(widget.RowLayoutData{
                 Stretch: true,
@@ -490,6 +855,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         widget.ButtonOpts.Text("(L)oad Song", &face, &widget.ButtonTextColor{
             Idle: color.White,
         }),
+        widget.ButtonOpts.TabOrder(-1),
         widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
             showLoadWindow()
         }),
@@ -506,6 +872,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         widget.ButtonOpts.Text("(P)ause/Unpause", &face, &widget.ButtonTextColor{
             Idle: color.White,
         }),
+        widget.ButtonOpts.TabOrder(-1),
         widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
             doPause()
         }),
@@ -524,7 +891,7 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         )),
     )
 
-    var updateScopes func()
+    updateScopes := func() {}
 
     setupOscilloscopes := func() {
         var scopes []*ebiten.Image
@@ -551,6 +918,10 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
     }
 
     showOscilloscopes := true
+    if runtime.GOOS == "js" {
+        // don't show oscilloscopes in the browser
+        showOscilloscopes = false
+    }
     toggleOscilloscopes := func() {
         showOscilloscopes = !showOscilloscopes
         if showOscilloscopes {
@@ -562,13 +933,16 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         }
     }
 
-    setupOscilloscopes()
+    if showOscilloscopes {
+        setupOscilloscopes()
+    }
 
     moreInfoContainer.AddChild(widget.NewButton(
         widget.ButtonOpts.Image(buttonImage),
         widget.ButtonOpts.Text("(T)oggle oscilloscopes", &face, &widget.ButtonTextColor{
             Idle: color.White,
         }),
+        widget.ButtonOpts.TabOrder(-1),
         widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
             toggleOscilloscopes()
         }),
@@ -596,261 +970,46 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     rootContainer.AddChild(oscilloscopes)
 
-    channels := widget.NewContainer(
-        widget.ContainerOpts.Layout(widget.NewRowLayout(
-            widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
-            widget.RowLayoutOpts.Spacing(8),
-        )),
+    mainView := widget.NewContainer(
+        widget.ContainerOpts.Layout(widget.NewRowLayout()),
     )
 
-    rowNumbers := widget.NewContainer(
-        widget.ContainerOpts.Layout(widget.NewRowLayout(
-            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-            widget.RowLayoutOpts.Spacing(2),
-        )),
-    )
+    channelHooks, channelUI := makeChannelView(player, &face)
+    mainView.AddChild(channelUI)
 
-    var rowContainers [][]*widget.Container
+    noteHooks, noteUI := makeNoteView(player, &face)
+    // mainView.AddChild(noteUI)
 
-    for i := range 64 {
-        textColor := color.RGBA{R: 255, G: 255, B: 255, A: 255}
-        if (i + 1) % 4 == 0 {
-            textColor = color.RGBA{R: 200, G: 200, B: 0, A: 255}
-        }
+    currentHooks := &channelHooks
 
-        container := widget.NewContainer(
-            widget.ContainerOpts.Layout(widget.NewRowLayout(
-                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                widget.RowLayoutOpts.Spacing(2),
-            )),
-        )
+    changeMainView := func() {
+        mainView.RemoveChildren()
 
-        rowContainers = append(rowContainers, []*widget.Container{container})
-
-        container.AddChild(widget.NewText(
-            widget.TextOpts.Text(fmt.Sprintf("%02X", i), &face, textColor),
-        ))
-
-        rowNumbers.AddChild(container)
-    }
-
-    for range 32 {
-        rowNumbers.AddChild(widget.NewText(
-            widget.TextOpts.Text("-", &face, color.White),
-        ))
-    }
-
-    makeRowScroller := func(content *widget.Container) *widget.ScrollContainer {
-        return widget.NewScrollContainer(
-            widget.ScrollContainerOpts.Content(content),
-            widget.ScrollContainerOpts.StretchContentWidth(),
-            widget.ScrollContainerOpts.WidgetOpts(
-                widget.WidgetOpts.LayoutData(widget.RowLayoutData{
-                    // FIXME: use a grid layout to automatically stretch the container
-                    // row layout doesn't seem to stretch the container to the viewable area
-                    MaxHeight: 650,
-                }),
-            ),
-            widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
-                Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255}),
-                Mask: ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 255, B: 255, A: 255}),
-            }),
-        )
-    }
-
-    var scrollers []*widget.ScrollContainer
-
-    rowNumberScroller := makeRowScroller(rowNumbers)
-    // rootContainer.AddChild(rowNumberScroller)
-    scrollers = append(scrollers, rowNumberScroller)
-
-    extraContainer := widget.NewContainer(
-        widget.ContainerOpts.Layout(widget.NewRowLayout(
-            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-            widget.RowLayoutOpts.Spacing(2),
-        )),
-        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
-    )
-    extraContainer.AddChild(widget.NewText(
-        widget.TextOpts.Text(" ", &face, color.White),
-    ))
-    extraContainer.AddChild(rowNumberScroller)
-
-    channels.AddChild(extraContainer)
-
-    var removeChannels []widget.RemoveChildFunc
-
-    var channelColumn []*widget.Container
-    for i := range player.GetChannelCount() {
-        column := widget.NewContainer(
-            widget.ContainerOpts.Layout(widget.NewRowLayout(
-                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                widget.RowLayoutOpts.Spacing(2),
-            )),
-            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
-        )
-
-        var channelButton *widget.Button
-
-        unmutedImage := &widget.ButtonImage{
-            Idle: ui_image.NewNineSliceColor(color.NRGBA{R: 0x0f, G: 0x58, B: 0x70, A: 255}),
-            // Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
-            Pressed: ui_image.NewNineSliceColor(color.NRGBA{R: 0x92, G: 0x34, B: 0x14, A: 255}),
-            Hover: ui_image.NewNineSliceColor(color.NRGBA{R: 0x1c, G: 0xb8, B: 0x9b, A: 255}),
-            PressedHover: ui_image.NewNineSliceColor(color.NRGBA{R: 0xd6, G: 0x33, B: 0x15, A: 255}),
-        }
-
-        channelButton = widget.NewButton(
-            widget.ButtonOpts.Image(unmutedImage),
-            widget.ButtonOpts.Text(fmt.Sprintf("Channel %d", i+1), &face, &widget.ButtonTextColor{
-                Idle: color.White,
-            }),
-            widget.ButtonOpts.ToggleMode(),
-            widget.ButtonOpts.ClickedHandler(func (args *widget.ButtonClickedEventArgs) {
-                player.ToggleMuteChannel(i)
-            }),
-            widget.ButtonOpts.TextPadding(&widget.Insets{
-                Left: 1,
-                Top: 1,
-                Bottom: 1,
-                Right: 1,
-            }),
-        )
-
-        column.AddChild(channelButton)
-
-        background := color.NRGBA{R: 64, G: 64, B: 64, A: 255}
-        if i % 2 == 0 {
-            background = color.NRGBA{R: 96, G: 96, B: 96, A: 255}
-        }
-
-        data := widget.NewContainer(
-            widget.ContainerOpts.Layout(widget.NewRowLayout(
-                widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                widget.RowLayoutOpts.Spacing(2),
-            )),
-            widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(background)),
-        )
-
-        scroller := makeRowScroller(data)
-        scrollers = append(scrollers, scroller)
-
-        column.AddChild(scroller)
-
-        channelColumn = append(channelColumn, data)
-        channels.AddChild(column)
-    }
-
-    setupChannels := func(){
-        for _, remove := range removeChannels {
-            remove()
-        }
-
-        removeChannels = nil
-
-        for row := range 64 {
-            rowContainers[row] = rowContainers[row][1:]
-        }
-
-        for i := range player.GetChannelCount() {
-            container := channelColumn[i]
-
-            for row := range 64 {
-                note := player.GetRowNoteInfo(i, row)
-
-                noteName := note.GetName()
-                if noteName == "" {
-                    noteName = "..."
-                }
-                /*
-                if note.PeriodFrequency > 0 {
-                    noteName = fmt.Sprintf("%v", mod.ConvertToNote(note.PeriodFrequency))
-                    // noteList.AddEntry(name)
-                }
-                */
-
-                sampleName := note.GetSampleName()
-                /*
-                if note.SampleNumber > 0 {
-                    sampleName = fmt.Sprintf("%02X", note.SampleNumber)
-                }
-                */
-
-                // effectName := "..."
-                effectName := note.GetEffectName()
-                /*
-                if note.EffectNumber > 0 || note.EffectParameter > 0 {
-                    effectName = fmt.Sprintf("%X%02X", note.EffectNumber, note.EffectParameter)
-                }
-                */
-
-                textContainer := widget.NewContainer(
-                    widget.ContainerOpts.Layout(widget.NewRowLayout(
-                        widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                        widget.RowLayoutOpts.Spacing(2),
-                    )),
-                )
-
-                textContainer.AddChild(widget.NewText(
-                    widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
-                    widget.TextOpts.Text(fmt.Sprintf("%v %v %v", noteName, sampleName, effectName), &face, color.White),
-                ))
-
-                rowContainers[row] = append(rowContainers[row], textContainer)
-                removeChannels = append(removeChannels, container.AddChild(textContainer))
-            }
-
-            for range 32 {
-                textContainer := widget.NewContainer(
-                    widget.ContainerOpts.Layout(widget.NewRowLayout(
-                        widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                        widget.RowLayoutOpts.Spacing(2),
-                    )),
-                )
-
-                textContainer.AddChild(widget.NewText(
-                    widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
-                    widget.TextOpts.Text("-", &face, color.White),
-                ))
-
-                removeChannels = append(removeChannels, container.AddChild(textContainer))
-            }
+        if currentHooks == &channelHooks {
+            mainView.AddChild(noteUI)
+            currentHooks = &noteHooks
+        } else {
+            mainView.AddChild(channelUI)
+            currentHooks = &channelHooks
         }
     }
 
-    setupChannels()
+    rootContainer.AddChild(mainView)
 
-    rootContainer.AddChild(channels)
+    // rootContainer.AddChild(channels)
 
     ui.Container = rootContainer
 
-    currentRowHighlight := 0
-
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
-            if row < len(rowContainers) {
-                top := row - 10
-                if top < 0 {
-                    top = 0
-                }
-                position := float64(top) / (64 + 10)
-
-                for _, scroller := range scrollers {
-                    scroller.ScrollTop = position
-                }
-                // log.Printf("Set scroll top to %v", rowScroll.ScrollTop)
-
-                for _, container := range rowContainers[currentRowHighlight] {
-                    container.SetBackgroundImage(nil)
-                }
-                currentRowHighlight = row
-                for _, container := range rowContainers[row] {
-                    container.SetBackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 255, G: 0, B: 0, A: 128}))
-                }
-            }
+            channelHooks.UpdateRow(row)
+            noteHooks.UpdateRow(row)
+            // currentHooks.UpdateRow(row)
         },
         UpdateOrder: func(order int, pattern int) {
-            setupChannels()
+            channelHooks.UpdateOrder(order, pattern)
+            noteHooks.UpdateOrder(order, pattern)
+            // currentHooks.UpdateOrder(order, pattern)
 
             orderText.Label = fmt.Sprintf("Order: %v/%v", order, player.GetSongLength())
             patternText.Label = fmt.Sprintf("Pattern: %d", pattern)
@@ -870,9 +1029,10 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         RenderScopes: func() {
             updateScopes()
         },
+        ToggleMainView: changeMainView,
     }
 
-    uiHooks.UpdateRow(currentRowHighlight)
+    uiHooks.UpdateRow(0)
 
     return &ui, uiHooks
 }

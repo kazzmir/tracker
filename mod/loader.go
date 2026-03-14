@@ -46,6 +46,10 @@ type Note struct {
     EffectParameter byte // 0-255
 }
 
+func (note *Note) GetNotePosition() int {
+    return noteValue(note.PeriodFrequency)
+}
+
 func (note *Note) GetEffectName() string {
     if note.EffectNumber > 0 || note.EffectParameter > 0 {
         return fmt.Sprintf("%X%02X", note.EffectNumber, note.EffectParameter)

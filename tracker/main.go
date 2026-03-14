@@ -288,6 +288,10 @@ func (engine *Engine) Update() error {
                 if engine.UIHooks.ToggleOscilloscopes != nil {
                     engine.UIHooks.ToggleOscilloscopes()
                 }
+            case ebiten.KeyTab:
+                if engine.UIHooks.ToggleMainView != nil {
+                    engine.UIHooks.ToggleMainView()
+                }
         }
     }
 

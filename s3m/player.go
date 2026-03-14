@@ -114,7 +114,7 @@ func (channel *Channel) GetRightPan() float32 {
 func (channel *Channel) UpdateRow() {
     channel.currentRow = channel.Player.CurrentRow
 
-    note := channel.Player.GetRowNote(channel.Channel, channel.currentRow)
+    note, _ := channel.Player.GetRowNote(channel.Channel, channel.currentRow)
 
     // log.Printf("Channel %v row %v Play note %+v", channel.Channel, channel.currentRow, note)
 
@@ -650,17 +650,22 @@ func (player *Player) GetSongLength() int {
     return player.S3M.SongLength
 }
 
-func (player *Player) GetRowNoteInfo(channel int, row int) common.NoteInfo {
+func (player *Player) GetRowNoteInfo(channel int, row int) (common.NoteInfo, bool) {
     return player.GetRowNote(channel, row)
 }
 
-func (player *Player) GetRowNote(channel int, row int) *Note {
+func (player *Player) GetRowNote(channel int, row int) (*Note, bool) {
     if player.GetPattern() >= len(player.S3M.Patterns) {
-        return &Note{}
+        return &Note{}, false
     }
 
     pattern := &player.S3M.Patterns[player.GetPattern()]
-    return &pattern.Rows[row][player.S3M.ChannelMap[channel]]
+
+    if row < 0 || row >= len(pattern.Rows) {
+        return nil, false
+    }
+
+    return &pattern.Rows[row][player.S3M.ChannelMap[channel]], true
 }
 
 func (player *Player) GetInstrument(index int) *Instrument {

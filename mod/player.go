@@ -170,6 +170,33 @@ func semitoneToNote(semitone int) string {
     return "?"
 }
 
+func noteValue(period uint16) int {
+    c3 := 856
+    c4 := 428
+    c5 := 214
+
+    cValues := map[int]int{
+        c3: 3,
+        c4: 4,
+        c5: 5,
+    }
+
+    for frequency, octave := range cValues {
+        for semitone := range 12 {
+            newFrequency := addSemitones(frequency, semitone)
+            diff := newFrequency - int(period)
+            if diff < 0 {
+                diff = -diff
+            }
+            if diff <= 2 {
+                return semitone + octave * 12
+            }
+        }
+    }
+
+    return 0
+}
+
 // convert a note period to a note name.
 // 428 = C-4
 func ConvertToNote(period uint16) string {
@@ -654,19 +681,19 @@ func (player *Player) GetName() string {
     return player.ModFile.Name
 }
 
-func (player *Player) GetRowNoteInfo(channel int, rowNumber int) common.NoteInfo {
+func (player *Player) GetRowNoteInfo(channel int, rowNumber int) (common.NoteInfo, bool) {
     return player.GetRowNote(channel, rowNumber)
 }
 
-func (player *Player) GetRowNote(channel int, rowNumber int) *Note {
+func (player *Player) GetRowNote(channel int, rowNumber int) (*Note, bool) {
     pattern := player.GetPattern()
     row := &player.ModFile.Patterns[pattern].Rows[rowNumber]
 
     if channel < len(row.Notes) {
-        return &row.Notes[channel]
+        return &row.Notes[channel], true
     }
 
-    return &Note{}
+    return &Note{}, false
 }
 
 func (player *Player) SetOnChangeRow(callback func(int)) {
