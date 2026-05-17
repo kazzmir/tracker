@@ -423,6 +423,7 @@ func (channel *Channel) Update(rate float32) {
     // if channel.CurrentNote != nil && int(channel.startPosition) < len(channel.CurrentSample.Data) && channel.CurrentFrequency > 0 && channel.Delay <= 0 {
     if channel.CurrentSample >= 0 && channel.CurrentPeriod > 0 {
         instrument := channel.Player.GetInstrument(channel.CurrentSample)
+        // log.Printf("Channel %v play sample %v period %v volume %v effect %v", channel.Channel, channel.CurrentSample, channel.CurrentPeriod, channel.CurrentVolume, channel.CurrentEffect)
         if instrument.MiddleC > 0 {
 
             period := 8363 * channel.CurrentPeriod / int(instrument.MiddleC)
@@ -432,6 +433,7 @@ func (channel *Channel) Update(rate float32) {
             }
 
             frequency := 14317056 / float32(period)
+
             // frequency := amigaFrequency / float32(period * 2)
 
             // ???
@@ -439,13 +441,20 @@ func (channel *Channel) Update(rate float32) {
 
             // log.Printf("Note %v Octave %v Frequency %v MiddleC %v", channel.CurrentNote.Note, Octaves[channel.CurrentNote.Note], frequency, instrument.MiddleC)
 
-
             incrementRate := frequency / float32(channel.Player.SampleRate)
+            // incrementRate *= 5.0
+
+            // log.Printf("Channel %v frequency %v period %v increment rate %v samples %v", channel.Channel, frequency, channel.CurrentPeriod, incrementRate, samples)
 
             noteVolume := float32(channel.CurrentVolume) / 64
 
             leftPan := channel.GetLeftPan()
             rightPan := channel.GetRightPan()
+
+            /*
+            leftPan = 1
+            rightPan = 1
+            */
 
             // log.Printf("note volume %v", noteVolume)
 
@@ -453,6 +462,8 @@ func (channel *Channel) Update(rate float32) {
 
             if incrementRate > 0 {
                 volume := channel.Volume * noteVolume * float32(channel.Player.GlobalVolume) / 64
+
+                // volume = 1
 
                 for range samples {
                     position := int(channel.startPosition)
@@ -741,7 +752,10 @@ func (player *Player) Update(timeDelta float32) {
     }
     */
 
-    for _, channel := range player.Channels {
+    for i, channel := range player.Channels {
+        if i != 6 && false {
+            continue
+        }
         changeRow := false
         if player.CurrentRow != channel.currentRow {
             channel.UpdateRow()

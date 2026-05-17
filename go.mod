@@ -3,6 +3,7 @@ module github.com/kazzmir/tracker
 go 1.25.0
 
 require (
+	github.com/Distortions81/impsynth v0.1.3
 	github.com/ebitengine/oto/v3 v3.4.0
 	github.com/ebitenui/ebitenui v0.7.2
 	github.com/fatih/color v1.18.0
