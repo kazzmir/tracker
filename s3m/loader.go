@@ -7,6 +7,8 @@ import (
     "encoding/binary"
     "log"
     "io"
+
+    "github.com/Distortions81/impsynth"
 )
 
 const (
@@ -46,6 +48,9 @@ type Instrument struct {
     LoopEnd int
     Data []float32
 }
+
+const SAMPLE_PCM = 1
+const SAMPLE_ADLIB_OPL = 2
 
 type Note struct {
     SampleNumber int
@@ -266,8 +271,8 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
 
     channelCount := 0
     for i, setting := range channelSettings {
-        logger.Printf("Channel %v setting: %v", i, setting < 16)
-        if setting < 16 {
+        logger.Printf("Channel %v setting: %v %v", i, setting, setting < 255)
+        if setting < 255 {
             channelMap[i] = channelCount
 
             channelCount += 1
@@ -275,6 +280,9 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
             logger.Printf("Channel %v default panning %v", i, setting)
 
             channelPanning[i] = setting
+            if channelPanning[i] >= 16 {
+                channelPanning[i] = 15
+            }
 
             /*
             if setting <= 7 {
@@ -361,7 +369,7 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
 
     var instruments []Instrument
 
-    for _, offset := range instrumentOffsets {
+    for i, offset := range instrumentOffsets {
         _, err := reader_.Seek(int64(offset << 4), io.SeekStart)
         if err != nil {
             return nil, err
@@ -381,8 +389,10 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
             return nil, err
         }
 
+        log.Printf("Instrument %v type %v", i, type_)
+
         // 1 is digital sample
-        if type_ == 1 {
+        if type_ == SAMPLE_PCM {
             // read a 3 byte unsigned value
             var high uint8
             var low uint16
@@ -505,6 +515,7 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
                 MiddleC: middleC,
                 Volume: sampleVolume,
                 Flags: flags,
+                SampleFormat: SAMPLE_PCM,
                 Loop: flags & 1 != 0,
                 LoopBegin: int(loopBegin),
                 LoopEnd: int(loopEnd),
@@ -512,6 +523,94 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
             })
 
             // log.Printf("Instrument %v loop begin %v end %v", i, loopBegin, loopEnd)
+        } else if type_ == SAMPLE_ADLIB_OPL {
+            _, err = buffer.Discard(3)
+            if err != nil {
+                return nil, err
+            }
+
+            var oplValues [12]uint8
+            _, err = io.ReadFull(buffer, oplValues[:])
+            if err != nil {
+                return nil, err
+            }
+
+            log.Printf("OPL values: %v", oplValues)
+
+            sampleVolume, err := buffer.ReadByte()
+            if err != nil {
+                return nil, err
+            }
+
+            log.Printf("OPL sample volume: %v", sampleVolume)
+
+            // dsk
+            _, err = buffer.Discard(1)
+            if err != nil {
+                return nil, err
+            }
+
+            // reserved
+            _, err = buffer.Discard(2)
+            if err != nil {
+                return nil, err
+            }
+
+            var c2spd uint32
+            err = binary.Read(buffer, binary.LittleEndian, &c2spd)
+
+            if err != nil {
+                return nil, err
+            }
+
+            log.Printf("OPL c2spd: %v", c2spd)
+
+            // opl := impsynth.NewOPL2(49716)
+            opl := impsynth.NewOPL2(8363)
+
+            opl.Reset()
+
+            // opl.WriteReg(0x1, 0x20)
+
+            opl.WriteReg(0x01, 0x20)
+            opl.WriteReg(0x20, oplValues[0])
+            opl.WriteReg(0x23, oplValues[1])
+            opl.WriteReg(0x40, oplValues[2])
+            opl.WriteReg(0x43, oplValues[3])
+            opl.WriteReg(0x60, oplValues[4])
+            opl.WriteReg(0x63, oplValues[5])
+            opl.WriteReg(0x80, oplValues[6])
+            opl.WriteReg(0x83, oplValues[7])
+            opl.WriteReg(0xe0, oplValues[8])
+            opl.WriteReg(0xe3, oplValues[9])
+            opl.WriteReg(0xc0, oplValues[10])
+
+            // opl.WriteReg(0xa0, 0x87)
+            opl.WriteReg(0xa0, 0xae)
+            opl.WriteReg(0xb0, 0x30)
+            // opl.WriteReg(0xb0, 0b1_111_00)
+
+            pcm := opl.GenerateStereoS16(1024 * 128)
+
+            log.Printf("OPL PCM data: %v", pcm[:512])
+
+            var floatData []float32
+            for i, value := range pcm {
+                if i % 2 == 0 {
+                    floatData = append(floatData, float32(value)/32768.0)
+                }
+            }
+
+            log.Printf("OPL float data: %v", floatData[:256])
+
+            instruments = append(instruments, Instrument{
+                Name: fmt.Sprintf("OPL instrument %v", i),
+                Volume: sampleVolume,
+                MiddleC: uint16(c2spd),
+                SampleFormat: SAMPLE_ADLIB_OPL,
+                Data: floatData,
+            })
+
         } else {
             instruments = append(instruments, Instrument{
             })
