@@ -535,14 +535,14 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
                 return nil, err
             }
 
-            log.Printf("OPL values: %v", oplValues)
+            // log.Printf("OPL values: %v", oplValues)
 
             sampleVolume, err := buffer.ReadByte()
             if err != nil {
                 return nil, err
             }
 
-            log.Printf("OPL sample volume: %v", sampleVolume)
+            // log.Printf("OPL sample volume: %v", sampleVolume)
 
             // dsk
             _, err = buffer.Discard(1)
@@ -563,7 +563,7 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
                 return nil, err
             }
 
-            log.Printf("OPL c2spd: %v", c2spd)
+            // log.Printf("OPL c2spd: %v", c2spd)
 
             // opl := impsynth.NewOPL2(49716)
             opl := impsynth.NewOPL2(int(c2spd))
@@ -599,16 +599,12 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
 
             pcm := opl.GenerateStereoS16(1024 * 128)
 
-            log.Printf("OPL PCM data: %v", pcm[:512])
-
             var floatData []float32
             for i, value := range pcm {
                 if i % 2 == 0 {
                     floatData = append(floatData, float32(value)/32768.0)
                 }
             }
-
-            log.Printf("OPL float data: %v", floatData[:256])
 
             instruments = append(instruments, Instrument{
                 Name: fmt.Sprintf("OPL instrument %v", i),
