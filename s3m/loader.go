@@ -566,7 +566,7 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
             log.Printf("OPL c2spd: %v", c2spd)
 
             // opl := impsynth.NewOPL2(49716)
-            opl := impsynth.NewOPL2(8363)
+            opl := impsynth.NewOPL2(int(c2spd))
 
             opl.Reset()
 
@@ -586,8 +586,15 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
             opl.WriteReg(0xc0, oplValues[10])
 
             // opl.WriteReg(0xa0, 0x87)
-            opl.WriteReg(0xa0, 0xae)
-            opl.WriteReg(0xb0, 0x30)
+
+            // C-4
+            // opl.WriteReg(0xa0, 0xae)
+            // opl.WriteReg(0xb0, 0x30)
+
+            // C-5
+            opl.WriteReg(0xa0, 0x57)
+            opl.WriteReg(0xb0, 0x31)
+
             // opl.WriteReg(0xb0, 0b1_111_00)
 
             pcm := opl.GenerateStereoS16(1024 * 128)

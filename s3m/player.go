@@ -752,12 +752,10 @@ func (player *Player) Update(timeDelta float32) {
     }
     */
 
-    for _, channel := range player.Channels {
-        /*
-        if i != 5 {
+    for i, channel := range player.Channels {
+        if i != 6 && false {
             continue
         }
-        */
         changeRow := false
         if player.CurrentRow != channel.currentRow {
             channel.UpdateRow()
