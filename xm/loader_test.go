@@ -18,6 +18,7 @@ func TestTrackerPanningMode(t *testing.T) {
 		{"MED2XM by J.Pynnonen", true},
 		{"MadTracker 2.0\x00user", true},
 		{"Sk@le Tracker\x00", true},
+		{"*Converted  XM-File*", true},
 		{"FastTracker v2.00   ", false},
 	} {
 		if linear := usesLinearPanning([]byte(variant.name)); linear != variant.linear {

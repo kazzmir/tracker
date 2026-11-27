@@ -512,6 +512,9 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*XMFile, error) {
 func usesLinearPanning(trackerName []byte) bool {
     // Some MadTracker releases put registration data after a NUL separator.
     name, _, _ := bytes.Cut(trackerName, []byte{0})
+    if len(name) == 20 && bytes.HasPrefix(name, []byte("*Converted ")) && bytes.HasSuffix(name, []byte("-File*")) {
+        return true // Digitrakker's XM export header.
+    }
     switch string(bytes.TrimRight(name, " ")) {
     case "Skale Tracker", "Sk@le Tracker", "MadTracker 2.0", "MED2XM by J.Pynnonen", "MilkyTracker":
         // An unversioned MilkyTracker header predates FT2 panning support.
