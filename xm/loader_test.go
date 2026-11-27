@@ -8,6 +8,26 @@ import (
 	"testing"
 )
 
+func TestTrackerPanningMode(t *testing.T) {
+	for _, variant := range []struct {
+		name   string
+		linear bool
+	}{
+		{"MilkyTracker        ", true},
+		{"MilkyTracker 0.90.87", false},
+		{"MED2XM by J.Pynnonen", true},
+		{"MadTracker 2.0\x00user", true},
+		{"Sk@le Tracker\x00", true},
+		{"*Converted  XM-File*", true},
+		{"DigiBooster Pro 2.20", true},
+		{"FastTracker v2.00   ", false},
+	} {
+		if linear := usesLinearPanning([]byte(variant.name)); linear != variant.linear {
+			t.Errorf("%q: linear panning = %t, want %t", variant.name, linear, variant.linear)
+		}
+	}
+}
+
 func TestMultiSampleInstrument(t *testing.T) {
 	// One instrument header, then two sample headers, then both samples' data.
 	data := make([]byte, 263+2*40)

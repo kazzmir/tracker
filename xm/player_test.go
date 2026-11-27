@@ -73,6 +73,19 @@ func TestDelayedNoteVolume(t *testing.T) {
 	}
 }
 
+func TestArpeggioQuantizesAfterPitchSlide(t *testing.T) {
+	p := MakePlayer(&XMFile{Channels: 1, Tempo: 5, LinearPeriods: true}, 48000)
+	track := p.Channels[0]
+	track.sample, track.voice = &Sample{}, &Instrument{}
+	track.note = Note{EffectType: EffectArpeggio, EffectParameter: 0x58}
+	track.period = 4608 + 40 // closer to B-3 than C-4
+	track.updateTick(1)      // five ticks per row: first arpeggio nibble
+	want := 8363 * math.Exp2((4608-4352)/768.0) / 48000
+	if math.Abs(track.increment-want) > 1e-12 || track.period != 4648 {
+		t.Fatalf("arpeggio increment %v (want %v), base period %v", track.increment, want, track.period)
+	}
+}
+
 func TestT1XMAgainstFFplay(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -90,6 +103,17 @@ func TestT1XMAgainstFFplay(t *testing.T) {
 		{"song3.xm", 8914688},
 		{"song4.xm", 11519040},
 		{"song5.xm", 14378496},
+		// These collection fixtures use Amiga rather than linear periods.
+		{filepath.Join("FastTracker II", "Alchase.xm"), 9115200},
+		{filepath.Join("FastTracker II", "Interpolative.xm"), 9127552},
+		{filepath.Join("FastTracker II", "Sigmentens Avund.xm"), 9761808},
+		// Skale and MadTracker use a different stereo panning law.
+		{filepath.Join("FastTracker II", "Things We Need.xm"), 1974528},
+		{filepath.Join("FastTracker II", "Into The Blu.xm"), 7372800},
+		{filepath.Join("FastTracker II", "Treetops.xm"), 6637518},
+		{filepath.Join("FastTracker II", "Remember Da Old Styl.xm"), 17326080},
+		{filepath.Join("FastTracker II", "Shorty.xm"), 2396160},            // Digitrakker export
+		{filepath.Join("FastTracker II", "No Chance - Remix.xm"), 7727955}, // DigiBooster Pro export
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {
