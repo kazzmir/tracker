@@ -10,6 +10,8 @@ type voice struct {
 	position, frequency, step                    float64
 	envPos                                       [3]int
 	envEnabled                                   byte
+	vibratoPhase, vibratoDepth                   int
+	vibratoNoise                                 uint32
 	fade                                         int
 	leftGain, rightGain, leftTarget, rightTarget float32
 	ramp                                         int
@@ -239,10 +241,41 @@ func (active *voice) setup(player *Player) {
 		active.leftTarget = float32(vol * .5)
 		active.rightTarget = -active.leftTarget
 	}
+	frequency = active.applySampleVibrato(frequency)
 	active.step = min(65536, max(0, frequency/float64(player.rate)))
 	if active.leftGain != active.leftTarget || active.rightGain != active.rightTarget {
 		active.ramp = max(1, player.rate/1000)
 	}
+}
+
+// Sample vibrato has independent phase and sweep state for every voice,
+// including notes continuing in the background after an NNA.
+func (active *voice) applySampleVibrato(frequency float64) float64 {
+	wave := active.sample
+	if wave.vibratoRate == 0 || wave.vibratoDepth == 0 {
+		return frequency
+	}
+	active.vibratoDepth = min(wave.vibratoDepth*256, active.vibratoDepth+wave.vibratoSweep)
+	phase := active.vibratoPhase
+	active.vibratoPhase = (phase + wave.vibratoRate) & 255
+	var height int
+	switch wave.vibratoWave {
+	case 1:
+		height = 64 - (phase+1)/2
+	case 2:
+		if phase < 128 {
+			height = 64
+		}
+	case 3:
+		active.vibratoNoise = active.vibratoNoise*1664525 + 1013904223
+		height = int(active.vibratoNoise>>25) - 64
+	case 4:
+		height = (phase+1)/2 - 64
+	default:
+		height = int(math.Round(64 * math.Sin(float64(phase)*math.Pi/128)))
+	}
+	amount := height * (active.vibratoDepth / 256) / 64
+	return frequency * math.Exp2(float64(amount)/768)
 }
 
 func (active *voice) frame() (float32, float32) {

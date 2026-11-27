@@ -55,6 +55,34 @@ func TestPatternMaskReuse(test *testing.T) {
 	}
 }
 
+func TestLegacyInstrumentAndMixVolume(test *testing.T) {
+	data := make([]byte, 197+554)
+	copy(data, "IMPM")
+	le.PutUint16(data[32:], 1)
+	le.PutUint16(data[34:], 1)
+	le.PutUint16(data[42:], 0x100)
+	le.PutUint16(data[44:], 4)
+	data[49], data[192] = 128, 255
+	le.PutUint32(data[193:], 197)
+	header := data[197:]
+	copy(header, "IMPI")
+	header[17], header[20], header[21] = 5, 1, 1
+	le.PutUint16(header[24:], 10)
+	header[26], header[27], header[64], header[65] = 3, 1, 48, 2
+	copy(header[504:], []byte{0, 64, 12, 32, 255})
+	module, err := Load(bytes.NewReader(data))
+	if err != nil {
+		test.Fatal(err)
+	}
+	inst := module.instruments[0]
+	if module.mixVolume != 128 || inst.globalVolume != 128 || inst.pan != 128 || inst.fadeout != 20 || inst.nna != 3 || inst.dct != 1 || inst.notes[0] != 48 || inst.samples[0] != 2 {
+		test.Fatalf("wrong legacy instrument or mix volume: %+v, %d", inst, module.mixVolume)
+	}
+	if inst.volume.count != 2 || inst.volume.points[1] != (point{12, 32}) || inst.volume.advance(12, false) != 12 || inst.panning.enabled() {
+		test.Fatalf("wrong legacy envelope: %+v", inst.volume)
+	}
+}
+
 func TestInvalidModule(test *testing.T) {
 	for _, variant := range []struct {
 		input string

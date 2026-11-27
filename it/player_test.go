@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -38,8 +39,44 @@ func TestRenderPatternBreak(test *testing.T) {
 	}
 }
 
+func TestSampleVibratoSweepsPerVoice(test *testing.T) {
+	wave := &sample{vibratoRate: 64, vibratoDepth: 2, vibratoSweep: 128}
+	active := voice{sample: wave}
+	other := voice{sample: wave}
+	const base = 8363.0
+	for tick, amount := range []int{0, 1, 0, -2, 0, 2} {
+		want := base * math.Exp2(float64(amount)/768)
+		if got := active.applySampleVibrato(base); got != want {
+			test.Fatalf("tick %d: frequency %v, want %v", tick, got, want)
+		}
+	}
+	if other.applySampleVibrato(base) != base {
+		test.Fatal("a new voice inherited another voice's vibrato")
+	}
+}
+
 func TestBlueFlameAgainstFFplay(test *testing.T) {
-	const path = "../t1/chris31b.it"
+	compareWithFFplay(test, "../t1/chris31b.it", 19134239, .99, .15)
+}
+
+func TestITCollectionAgainstFFplay(test *testing.T) {
+	for _, fixture := range []struct {
+		name                     string
+		frames                   int
+		minCorrelation, maxError float64
+	}{
+		{"Beyond Pluto.it", 7376064, .99, .10},       // IT 1.x instrument headers
+		{"FF1 - Battle Remix.it", 2093790, .98, .21}, // mix volume 128
+		{"Chippie Cousin.it", 2303616, .99, .16},     // sample auto-vibrato
+	} {
+		test.Run(fixture.name, func(test *testing.T) {
+			compareWithFFplay(test, filepath.Join("..", "t1", "Impulse Tracker", fixture.name), fixture.frames, fixture.minCorrelation, fixture.maxError)
+		})
+	}
+}
+
+func compareWithFFplay(test *testing.T, path string, frames int, minCorrelation, maxError float64) {
+	test.Helper()
 	file, err := os.Open(path)
 	if os.IsNotExist(err) {
 		test.Skip("local IT fixture not available")
@@ -53,7 +90,6 @@ func TestBlueFlameAgainstFFplay(test *testing.T) {
 		test.Fatal(err)
 	}
 	const rate = 48000
-	const frames = 19134239
 	pcm := MakePlayer(module, rate).RenderToPCM()
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -117,7 +153,7 @@ func TestBlueFlameAgainstFFplay(test *testing.T) {
 		corr := dot[side] / math.Sqrt(gotPower[side]*wantPower[side])
 		rms := math.Sqrt(errorPower[side] / wantPower[side])
 		test.Logf("side %d: %d frames, correlation %.5f, normalized RMS error %.4f", side, frames, corr, rms)
-		if !(corr > .99 && rms < .15) {
+		if !(corr > minCorrelation && rms < maxError) {
 			test.Errorf("side %d differs from ffplay", side)
 		}
 	}
