@@ -17,6 +17,7 @@ type XMFile struct {
     Channels int // number of channels in the song
     BPM uint16 // beats per minute
     Tempo uint16 // tempo in ticks per beat
+    LinearPeriods bool
 }
 
 func (file *XMFile) GetPattern(order int) *Pattern {
@@ -271,7 +272,7 @@ func (pattern *Pattern) GetRows(channels int) [][]Note {
 
 
 func (pattern *Pattern) GetRow(row int, channels int) []Note {
-    if row < 0 || row >= int(pattern.Rows) {
+    if row < 0 || row >= int(pattern.Rows) || len(pattern.PatternData) == 0 {
         return nil
     }
 
@@ -282,7 +283,10 @@ func (pattern *Pattern) GetRow(row int, channels int) []Note {
     rowStart := row * channels
     rowEnd := rowStart + channels
 
-    return pattern.parsedNotes[rowStart:rowEnd]
+    if rowStart >= len(pattern.parsedNotes) {
+        return nil
+    }
+    return pattern.parsedNotes[rowStart:min(rowEnd, len(pattern.parsedNotes))]
 }
 
 func Load(reader_ io.ReadSeeker, logger *log.Logger) (*XMFile, error) {
@@ -434,9 +438,10 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*XMFile, error) {
         orderData = append(orderData, pattern)
     }
 
-    if uint16(len(orderData)) > songLength {
-        orderData = orderData[:songLength]
+    if len(orderData) < int(songLength) {
+        return nil, fmt.Errorf("truncated pattern order: got %d entries, want %d", len(orderData), songLength)
     }
+    orderData = orderData[:songLength]
 
     // Missing pattern slots are played as empty 64-row patterns.
     logger.Printf("Pattern Order Data: %v", orderData)
@@ -459,6 +464,11 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*XMFile, error) {
         logger.Printf("Pattern %d notes: %d", i, len(notes))
     }
 
+    // A trailing order that points past the stored patterns is an end
+    // marker in FastTracker modules such as The Love Trap.
+    for len(orderData) > 1 && int(orderData[len(orderData)-1]) >= len(patterns) {
+        orderData = orderData[:len(orderData)-1]
+    }
     for _, index := range orderData {
         for int(index) >= len(patterns) {
             patterns = append(patterns, Pattern{Rows: 64})
@@ -492,6 +502,7 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*XMFile, error) {
         Channels: int(channelCount),
         BPM: bpm,
         Tempo: tempo,
+        LinearPeriods: flags & 1 != 0,
     }, nil
 }
 
