@@ -90,6 +90,10 @@ func TestT1XMAgainstFFplay(t *testing.T) {
 		{"song3.xm", 8914688},
 		{"song4.xm", 11519040},
 		{"song5.xm", 14378496},
+		// These collection fixtures use Amiga rather than linear periods.
+		{filepath.Join("FastTracker II", "Alchase.xm"), 9115200},
+		{filepath.Join("FastTracker II", "Interpolative.xm"), 9127552},
+		{filepath.Join("FastTracker II", "Sigmentens Avund.xm"), 9761808},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {

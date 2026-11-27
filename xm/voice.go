@@ -69,7 +69,7 @@ func (c *Channel) notePeriod(note, relative, tune int) float64 {
 	if c.player.XMFile.LinearPeriods {
 		return float64(7680 - 64*n - tune/2)
 	}
-	return math.Round(1712 * math.Exp2(-float64(n-48)/12-float64(tune)/1536))
+	return float64(amigaPeriod(n, tune))
 }
 
 func (c *Channel) release() {
