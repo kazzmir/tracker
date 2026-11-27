@@ -73,6 +73,19 @@ func TestDelayedNoteVolume(t *testing.T) {
 	}
 }
 
+func TestArpeggioQuantizesAfterPitchSlide(t *testing.T) {
+	p := MakePlayer(&XMFile{Channels: 1, Tempo: 5, LinearPeriods: true}, 48000)
+	track := p.Channels[0]
+	track.sample, track.voice = &Sample{}, &Instrument{}
+	track.note = Note{EffectType: EffectArpeggio, EffectParameter: 0x58}
+	track.period = 4608 + 40 // closer to B-3 than C-4
+	track.updateTick(1)      // five ticks per row: first arpeggio nibble
+	want := 8363 * math.Exp2((4608-4352)/768.0) / 48000
+	if math.Abs(track.increment-want) > 1e-12 || track.period != 4648 {
+		t.Fatalf("arpeggio increment %v (want %v), base period %v", track.increment, want, track.period)
+	}
+}
+
 func TestT1XMAgainstFFplay(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -98,6 +111,7 @@ func TestT1XMAgainstFFplay(t *testing.T) {
 		{filepath.Join("FastTracker II", "Things We Need.xm"), 1974528},
 		{filepath.Join("FastTracker II", "Into The Blu.xm"), 7372800},
 		{filepath.Join("FastTracker II", "Treetops.xm"), 6637518},
+		{filepath.Join("FastTracker II", "Remember Da Old Styl.xm"), 17326080},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {

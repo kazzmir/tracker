@@ -17,6 +17,7 @@ type Channel struct {
 	instrument, voice                               *Instrument
 	sample                                          *Sample
 	position, period, target                        float64
+	fineTune                                        int
 	volume, pan                                     int
 	released                                        bool
 	fade, volumeTick, panTick, autoPhase, autoDepth int
@@ -108,6 +109,7 @@ func (c *Channel) trigger() {
 		} else {
 			c.sample, c.voice = s, c.instrument
 			c.period, c.target = period, 0
+			c.fineTune = tune
 			c.position = 0
 			c.vibratoPhase, c.tremoloPhase = 0, 0
 			c.left, c.right = 0, 0
@@ -369,10 +371,22 @@ func (c *Channel) updateTick(tick int) {
 		case 2:
 			semitone = x & 15
 		}
-		if c.player.XMFile.LinearPeriods {
-			period -= float64(semitone * 64)
-		} else {
-			period *= math.Exp2(-float64(semitone) / 12)
+		if arp%3 != 0 {
+			// FT2 finds the nearest note before adding the arpeggio offset.
+			// This matters when a preceding slide left a fractional semitone.
+			low, high := 0, 118
+			for low < high {
+				mid := (low + high) / 2
+				if c.notePeriod(mid+1, 0, c.fineTune+64) > period {
+					low = mid + 1
+				} else {
+					high = mid
+				}
+			}
+			period = c.notePeriod(min(low+semitone, 118)+1, 0, c.fineTune)
+			if low+semitone >= 96 {
+				period = max(period, c.notePeriod(97, 0, 0))
+			}
 		}
 	}
 	inst := c.voice

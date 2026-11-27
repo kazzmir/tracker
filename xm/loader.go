@@ -504,10 +504,21 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*XMFile, error) {
         BPM: bpm,
         Tempo: tempo,
         LinearPeriods: flags & 1 != 0,
-        // These writers use linear stereo gains rather than FT2's square-root panning.
-        linearPanning: bytes.Equal(trackerName, []byte("Skale Tracker")) || bytes.Equal(trackerName, []byte("Sk@le Tracker")) ||
-            bytes.HasPrefix(trackerName, []byte("MadTracker 2.0\x00")) || bytes.Equal(trackerName, []byte("MadTracker 2.0")),
+        linearPanning: usesLinearPanning(trackerName),
     }, nil
+}
+
+// These XM writers use linear stereo gains rather than FT2's square-root panning.
+func usesLinearPanning(trackerName []byte) bool {
+    // Some MadTracker releases put registration data after a NUL separator.
+    name, _, _ := bytes.Cut(trackerName, []byte{0})
+    switch string(bytes.TrimRight(name, " ")) {
+    case "Skale Tracker", "Sk@le Tracker", "MadTracker 2.0", "MED2XM by J.Pynnonen", "MilkyTracker":
+        // An unversioned MilkyTracker header predates FT2 panning support.
+        return true
+    default:
+        return false
+    }
 }
 
 func readPattern(logger *log.Logger, reader *bufio.Reader, maximumFileSize int64, patternIndex int) (Pattern, error) {
