@@ -44,8 +44,7 @@ type Channel struct {
     Vibrato Vibrato
     TonePortamentoTarget int
     TonePortamentoSpeed int
-    ArpeggioBase int
-    ArpeggioTicks int
+    arpeggioOffset int
     delayedNote *Note
     delayTick int
     loopRow, loopCount int
@@ -220,6 +219,26 @@ func addSemitones(period int, semitones int) int {
     return int(float64(period) / math.Pow(2, float64(semitones) / 12.0))
 }
 
+// arpeggioPeriod transposes the mixer pitch without changing the base period.
+func (channel *Channel) arpeggioPeriod(pitch int) int {
+    if channel.CurrentEffect != EffectArpeggio || channel.arpeggioOffset == 0 || pitch <= 0 {
+        return pitch
+    }
+    note := 0
+    for note < len(modNotePeriods)-1 && modPeriodForNote(note, channel.fineTune) > pitch {
+        note++
+    }
+    note += channel.arpeggioOffset
+    if channel.Player.ModFile.amigaTempo && note >= 60 {
+        // The three-octave ProTracker table has a sentinel before wrapping.
+        if note == 60 {
+            return math.MaxInt32
+        }
+        note -= 37
+    }
+    return modPeriodForNote(note, channel.fineTune)
+}
+
 func (channel *Channel) UpdatePortamento(ticks int) {
     if channel.TonePortamentoTarget == 0 {
         return
@@ -277,42 +296,18 @@ func (channel *Channel) UpdateTick(tick int) {
                 channel.Vibrato.Update()
             }
         case EffectArpeggio:
-            tick1 := channel.CurrentEffectParameter >> 4
-            tick2 := channel.CurrentEffectParameter & 0xf
-
-            if changeRow {
-                channel.ArpeggioTicks = 0
-                // channel.CurrentFrequency = channel.ArpeggioBase
-            } else {
-                channel.ArpeggioTicks += ticks
-                switch channel.ArpeggioTicks % 3 {
-                    case 0:
-                        if tick1 > 0 || tick2 > 0 {
-                            channel.CurrentFrequency = channel.ArpeggioBase
-                        }
-                    case 1:
-                        if tick1 > 0 {
-                            channel.CurrentFrequency = addSemitones(channel.ArpeggioBase, tick1)
-                            // log.Printf("Arpeggio tick1 %v, frequency %v", tick1, channel.CurrentFrequency)
-                        }
-                    case 2:
-                        if tick2 > 0 {
-                            channel.CurrentFrequency = addSemitones(channel.ArpeggioBase, tick2)
-                            // log.Printf("Arpeggio tick2 %v, frequency %v", tick2, channel.CurrentFrequency)
-                        }
-                }
+            switch tick % 3 {
+                case 0: channel.arpeggioOffset = 0
+                case 1: channel.arpeggioOffset = channel.CurrentEffectParameter >> 4
+                case 2: channel.arpeggioOffset = channel.CurrentEffectParameter & 15
             }
-
-            /*
-            speed := channel.CurrentEffectParameter >> 4
-            depth := channel.CurrentEffectParameter & 0xf
-            */
     }
 }
 
 func (channel *Channel) UpdateRow() {
     channel.CurrentEffect = 0
     channel.CurrentEffectParameter = 0
+    channel.arpeggioOffset = 0
     channel.VolumeCutTick = 0
     channel.delayedNote = nil
     note, _ := channel.Player.GetNote(channel.ChannelNumber)
@@ -384,7 +379,6 @@ func (channel *Channel) applyNote(note *Note) {
             if note.EffectParameter > 0 {
                 channel.CurrentEffect = EffectArpeggio
                 channel.CurrentEffectParameter = int(note.EffectParameter)
-                channel.ArpeggioBase = newFrequency
             }
         case EffectTonePortamento:
             channel.CurrentEffect = EffectTonePortamento
@@ -523,7 +517,8 @@ func (channel *Channel) render(samples int) {
     if channel.CurrentEffect == EffectVibrato || channel.CurrentEffect == EffectVibratoAndVolumeSlide {
         period = channel.Vibrato.Apply(period)
     }
-    increment := float64(palSampleClock) / (max(1, float64(period) + float64(channel.periodFraction)/4) * float64(channel.Player.SampleRate))
+    pitch := channel.arpeggioPeriod(period*4 + channel.periodFraction)
+    increment := float64(palSampleClock) / (max(1, float64(pitch)/4) * float64(channel.Player.SampleRate))
     position := channel.startPosition
     for range samples {
         if channel.rampFrames > 0 {

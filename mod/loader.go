@@ -145,7 +145,13 @@ var modTunedOctave = [16][12]int{
 // tunedMODPeriod returns a period in quarter-period units.
 func tunedMODPeriod(period uint16, fineTune byte) int {
     if fineTune == 0 { return int(period) * 4 }
-    note := nearestMODNote(period)
+    return modPeriodForNote(nearestMODNote(period), fineTune)
+}
+
+func modPeriodForNote(note int, fineTune byte) int {
+    if fineTune == 0 && note < len(modNotePeriods) {
+        return int(modNotePeriods[note]) * 4
+    }
     return (modTunedOctave[fineTune&15][note%12] * 8) >> (note/12)
 }
 
@@ -277,7 +283,7 @@ func Load(reader_ io.Reader) (*ModFile, error) {
     var patterns []Pattern
     amigaTempo := string(kind) == "M.K."
     for _, sample := range samples {
-        if sample.LoopLength == 0 {
+        if sample.Length != 0 && sample.LoopLength == 0 {
             amigaTempo = false
         }
     }

@@ -19,7 +19,7 @@ func TestIntroAgainstFFplay(t *testing.T) {
 }
 
 func TestProTrackerCollectionAgainstFFplay(t *testing.T) {
-	for _, song := range []string{"Azzura", "Safe Sex. Comp", "Lady Madonna", "P.F.D. Guitars", "Network South East 34"} {
+	for _, song := range []string{"Azzura", "Safe Sex. Comp", "Lady Madonna", "P.F.D. Guitars", "Network South East 34", "Anthem Of Techno"} {
 		t.Run(song, func(t *testing.T) {
 			compareMODWithFFplay(t, filepath.Join("..", "t1", "ProTracker", song+".mod"), false)
 		})
