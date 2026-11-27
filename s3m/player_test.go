@@ -49,13 +49,23 @@ func TestScreamTrackerSlidesAndNoteDelay(t *testing.T) {
 
 func TestAquaAgainstFFplay(t *testing.T) {
 	path := "../aqua.s3m"
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		path = "../data/data/aqua.s3m"
+	}
+	compareWithFFplay(t, path, 7299840, .99, .12)
+}
+
+func TestM01GMuzAgainstFFplay(t *testing.T) {
+	// The OPL emulators differ in phase and envelope shape; allow more
+	// waveform error than for the all-PCM aqua.s3m.
+	compareWithFFplay(t, "../m01gmuz.s3m", 2684800, .96, .27)
+}
+
+func compareWithFFplay(t *testing.T, path string, frames int, minCorrelation, maxError float64) {
+	t.Helper()
 	file, err := os.Open(path)
 	if os.IsNotExist(err) {
-		path = "../data/data/aqua.s3m"
-		file, err = os.Open(path)
-	}
-	if os.IsNotExist(err) {
-		t.Skip("local aqua.s3m fixture not available")
+		t.Skipf("local fixture %s not available", path)
 	}
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +101,6 @@ func TestAquaAgainstFFplay(t *testing.T) {
 	}()
 	ref := bufio.NewReader(stdout)
 	const rate = 48000
-	const frames = 7299840
 	ours := MakePlayer(module, rate).RenderToPCM()
 	var got, want [32768]byte
 	var gotPower, wantPower, dot, errorPower [2]float64
@@ -128,7 +137,7 @@ func TestAquaAgainstFFplay(t *testing.T) {
 		corr := dot[side] / math.Sqrt(gotPower[side]*wantPower[side])
 		rms := math.Sqrt(errorPower[side] / wantPower[side])
 		t.Logf("side %d: %d frames, correlation %.5f, normalized RMS error %.4f", side, frames, corr, rms)
-		if !(corr > .99 && rms < .12) {
+		if !(corr > minCorrelation && rms < maxError) {
 			t.Errorf("side %d differs from ffplay", side)
 		}
 	}

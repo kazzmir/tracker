@@ -15,6 +15,8 @@ type channel struct {
 	note                                                 Note
 	selected, volume, pan                                int
 	voice                                                *Instrument
+	fm                                                   *oplVoice
+	fmTrigger                                            bool
 	position                                             float64
 	period, target, toneSpeed                            int
 	memory, parameter, offset, previousOffset, retrigger int
@@ -43,7 +45,7 @@ func (track *channel) trigger(portamento bool) {
 	note := track.note
 	if note.ChangeSample {
 		track.selected = note.SampleNumber - 1
-		if instrument := track.player.GetInstrument(track.selected); instrument != nil && len(instrument.Data) > 0 {
+		if instrument := track.player.GetInstrument(track.selected); instrument.playable() {
 			track.volume = int(instrument.Volume)
 		}
 	}
@@ -58,13 +60,14 @@ func (track *channel) trigger(portamento bool) {
 		if period > 0 {
 			if portamento && track.period > 0 && track.voice != nil {
 				track.target = period
-				if instrument != nil && len(instrument.Data) > 0 {
+				if instrument.playable() {
 					track.voice = instrument
 				}
 			} else {
 				track.period = period
 				track.voice = instrument
 				track.position = 0
+				track.fmTrigger = instrument != nil && instrument.OPL != nil
 				if track.vibratoWave < 4 {
 					track.vibratoPhase = 0
 				}
@@ -83,7 +86,7 @@ func (track *channel) trigger(portamento bool) {
 			}
 		}
 	} else if note.ChangeSample {
-		if instrument := track.player.GetInstrument(track.selected); instrument != nil && len(instrument.Data) > 0 {
+		if instrument := track.player.GetInstrument(track.selected); instrument.playable() {
 			track.voice = instrument
 		}
 	}
@@ -374,6 +377,11 @@ func (track *channel) prepare() {
 			volume = 0
 		}
 	}
+	if track.voice != nil && track.voice.OPL != nil && track.period > 0 {
+		track.syncOPL(period, max(0, min(64, volume)))
+	} else if track.fm != nil {
+		track.fm.noteOff()
+	}
 	gain := float32(max(0, min(64, volume))*int(player.GlobalVolume)*int(player.S3M.MixVolume)) / (64 * 64 * 128)
 	pan := float32(track.pan) / 256
 	track.targetLeft, track.targetRight = gain*(1-pan), gain*pan
@@ -407,7 +415,11 @@ func (track *channel) render(frames int) {
 		}
 	}
 	position := track.position
-	for range frames {
+	var fmSamples []int16
+	if track.fm != nil {
+		fmSamples = track.fm.chip.GenerateStereoS16(frames)
+	}
+	for frame := range frames {
 		var leftSample, rightSample float32
 		if position < float64(end) && track.step > 0 {
 			index := int(position)
@@ -432,6 +444,17 @@ func (track *channel) render(frames int) {
 			track.ramp--
 		}
 		left, right := leftSample*track.left, rightSample*track.right
+		if len(fmSamples) > 0 {
+			// OPL output has its own mixer level, independent of PCM master volume.
+			const gain = 0.816 / 32768
+			mono := float32(fmSamples[frame*2]) * gain * float32(track.player.GlobalVolume) / 64
+			if track.pan <= 170 {
+				left += mono
+			}
+			if track.pan >= 85 {
+				right += mono
+			}
+		}
 		track.buffer.UnsafeWrite(left)
 		track.buffer.UnsafeWrite(right)
 		track.scope.UnsafeWrite(left)
