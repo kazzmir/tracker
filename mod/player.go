@@ -6,6 +6,7 @@ import (
     "io"
     "fmt"
     "runtime"
+    "encoding/binary"
     
     "github.com/kazzmir/tracker/common"
 )
@@ -63,9 +64,6 @@ type Channel struct {
     CurrentEffect int
     CurrentEffectParameter int
 
-    // CurrentNote *Note
-    currentRow int
-    // endPosition int
     startPosition float32
 }
 
@@ -278,12 +276,14 @@ func (channel *Channel) UpdatePortamento(ticks int) {
     }
 }
 
-func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
+func (channel *Channel) UpdateTick(tick int) {
+    changeRow := tick == 0
+    const ticks = 1
     if channel.Delay > 0 {
         channel.Delay -= ticks
     }
 
-    if channel.VolumeCutTick > 0 && ticks == channel.VolumeCutTick {
+    if channel.VolumeCutTick > 0 && tick == channel.VolumeCutTick {
         channel.Volume = 0
     }
 
@@ -309,7 +309,9 @@ func (channel *Channel) UpdateTick(changeRow bool, ticks int) {
                 channel.UpdateVolume()
             }
         case EffectVolumeSlide:
-            channel.UpdateVolume()
+            if !changeRow {
+                channel.UpdateVolume()
+            }
         case EffectTonePortamento:
             if !changeRow {
                 channel.UpdatePortamento(ticks)
@@ -361,7 +363,7 @@ func (channel *Channel) UpdateRow() {
     // on the last row
     // channel.Vibrato.position = 0
 
-    note, row := channel.Player.GetNote(channel.ChannelNumber)
+    note, _ := channel.Player.GetNote(channel.ChannelNumber)
     if note.SampleNumber != 0 {
         // log.Printf("Channel %v playing note %v", channel.ChannelNumber, note)
     }
@@ -375,7 +377,6 @@ func (channel *Channel) UpdateRow() {
     // var sample *mod.Sample
 
     // log.Printf("new row %v", row)
-    channel.currentRow = row
     if note.SampleNumber != 0 {
         channel.CurrentSample = channel.Player.GetSample(note.SampleNumber-1)
         // channel.CurrentNote = note
@@ -388,7 +389,7 @@ func (channel *Channel) UpdateRow() {
             volume := min(note.EffectParameter, 64)
             channel.Volume = float32(volume) / 64.0
         case EffectSetSpeed:
-            if note.EffectParameter >= 0 && note.EffectParameter <= 0x1f {
+            if note.EffectParameter > 0 && note.EffectParameter <= 0x1f {
                 channel.Player.Speed = int(note.EffectParameter)
             } else if note.EffectParameter >= 0x20 && note.EffectParameter <= 0xff {
                 channel.Player.BPM = int(note.EffectParameter)
@@ -433,14 +434,17 @@ func (channel *Channel) UpdateRow() {
             channel.CurrentEffect = EffectVibratoAndVolumeSlide
             channel.CurrentEffectParameter = int(note.EffectParameter)
         case EffectPositionJump:
-            channel.Player.SetOrder(int(note.EffectParameter))
+            channel.Player.jumpOrder = int(note.EffectParameter)
+            channel.Player.breakRow = 0
         case EffectPatternBreak:
-            channel.Player.NextOrder()
+            if channel.Player.jumpOrder < 0 {
+                channel.Player.jumpOrder = channel.Player.CurrentOrder + 1
+            }
             value := int(note.EffectParameter >> 4) * 10 + int(note.EffectParameter & 0xf)
             if value > 63 {
                 value = 0
             }
-            channel.Player.CurrentRow = value
+            channel.Player.breakRow = value
         case EffectVibrato:
             channel.CurrentEffect = EffectVibrato
             channel.CurrentEffectParameter = int(note.EffectParameter)
@@ -489,7 +493,7 @@ func (channel *Channel) UpdateRow() {
     channel.CurrentFrequency = newFrequency
 }
 
-func (channel *Channel) Update(rate float32) error {
+func (channel *Channel) render(samples int) {
     /*
     if note.SampleNumber > 0 {
         sample = channel.Engine.GetSample(note.SampleNumber-1)
@@ -525,7 +529,6 @@ func (channel *Channel) Update(rate float32) error {
     }
     */
 
-    samples := int(float32(channel.Player.SampleRate) * rate)
     samplesWritten := 0
 
     channel.AudioBuffer.Lock()
@@ -581,7 +584,6 @@ func (channel *Channel) Update(rate float32) error {
     channel.AudioBuffer.Unlock()
     channel.ScopeBuffer.Unlock()
 
-    return nil
 }
 
 func MakeChannelVoice(channelNumber int, player *Player) *Channel {
@@ -613,11 +615,11 @@ type Player struct {
     OnChangeOrder func(int, int)
     OnChangeSpeed func(int, int)
 
-    // count of the orders played
-    OrdersPlayed int
-
-    ticks float32
-    // rowPosition float32
+    tick int
+    framesLeft int
+    frameRemainder float64
+    jumpOrder int
+    breakRow int
 }
 
 func MakePlayer(modfile *ModFile, sampleRate int) *Player {
@@ -626,8 +628,8 @@ func MakePlayer(modfile *ModFile, sampleRate int) *Player {
         SampleRate: sampleRate,
         Speed: 6,
         BPM: 125,
-        CurrentRow: -1,
-        // CurrentOrder: 0xa,
+        CurrentRow: 0,
+        jumpOrder: -1,
     }
 
     for i := range modfile.Channels {
@@ -734,7 +736,10 @@ func (player *Player) SetOrder(order int) {
 
     player.CurrentRow = 0
     player.CurrentOrder = order
-    player.ticks = 0
+    player.tick = 0
+    player.framesLeft = 0
+    player.jumpOrder = -1
+    player.breakRow = 0
 
     if player.OnChangeOrder != nil {
         player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
@@ -742,31 +747,15 @@ func (player *Player) SetOrder(order int) {
 }
 
 func (player *Player) NextOrder() {
-    player.CurrentOrder += 1
-    if player.CurrentOrder >= player.ModFile.SongLength {
-        player.CurrentOrder = 0
-    }
-    player.CurrentRow = 0
-
-    if player.OnChangeOrder != nil {
-        player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
-    }
+    player.SetOrder(player.CurrentOrder + 1)
 }
 
 func (player *Player) PreviousOrder() {
-    player.CurrentOrder -= 1
-    if player.CurrentOrder < 0 {
-        player.CurrentOrder = 0
-    }
-    player.CurrentRow = 0
-
-    if player.OnChangeOrder != nil {
-        player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
-    }
+    player.SetOrder(max(player.CurrentOrder - 1, 0))
 }
 
 func (player *Player) ResetRow() {
-    player.CurrentRow = 0
+    player.SetOrder(player.CurrentOrder)
 }
 
 func (player *Player) GetCurrentOrder() int {
@@ -785,155 +774,120 @@ func (player *Player) GetChannelData(channel int, data []float32) int {
     return player.Channels[channel].ScopeBuffer.Peek(data)
 }
 
-func (player *Player) Update(timeDelta float32) {
-    oldRow := player.CurrentRow
-    oldTicks := int(player.ticks)
-
-    if player.CurrentRow < 0 {
-        player.CurrentRow = 0
-    }
-
-    player.ticks += timeDelta * float32(player.BPM) * 2 / 5
-    newTicks := int(player.ticks)
-
-    if player.ticks >= float32(player.Speed) {
-        player.CurrentRow += 1
-        // log.Printf("Row: %v", player.CurrentRow)
-        player.ticks -= float32(player.Speed)
-    }
-
-    if player.CurrentRow > len(player.ModFile.Patterns[0].Rows) - 1 {
-        // player.rowPosition = 0
-        player.CurrentRow = 0
-        player.CurrentOrder += 1
-        player.OrdersPlayed += 1
-        if player.CurrentOrder >= player.ModFile.SongLength {
-            player.CurrentOrder = 0
-        }
-
-        if player.OnChangeOrder != nil {
-            player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
-        }
-
-        log.Printf("order %v next pattern: %v", player.CurrentOrder, player.GetPattern())
-    }
-
-    if oldRow != player.CurrentRow {
+func (player *Player) beginTick() {
+    if player.tick == 0 {
         if player.OnChangeRow != nil {
             player.OnChangeRow(player.CurrentRow)
         }
-    }
-
-    for _, channel := range player.Channels {
-        changeRow := false
-        if oldRow != channel.currentRow {
-            channel.UpdateRow()
-            changeRow = true
-        }
-
-        if newTicks != oldTicks {
-            channel.UpdateTick(changeRow, newTicks - oldTicks)
-        }
-
-        channel.Update(timeDelta)
-    }
-}
-
-// using this function turns out to be quite slow, its faster to use min/max
-func clamp(value float32, min float32, max float32) float32 {
-    if value < min {
-        return min
-    } else if value > max {
-        return max
-    }
-    return value
-}
-
-// produce a PCM stream of stereo samples
-func (player *Player) RenderToPCM() io.Reader {
-    // make a buffer to hold 1/100th of a second of audio data, which is 4-bytes per sample
-    // and 1 samples per channel
-    rate := 100
-    buffer := make([]float32, player.SampleRate / rate)
-    mix := make([]float32, player.SampleRate * 2 / rate)
-
-    fillMix := func() bool {
-        if player.OrdersPlayed >= player.ModFile.SongLength {
-            return false
-        }
-
-        player.Update(1.0 / float32(rate))
-
-        for i := range mix {
-            mix[i] = 0
-        }
-
         for _, channel := range player.Channels {
-            amount := channel.AudioBuffer.Read(buffer)
-
-            // log.Printf("Channel %v produced %v samples", chNumber, amount)
-
-            if amount > 0 {
-                // copy the samples into the mix buffer
-                for i := range amount {
-                    // mono to stereo
-                    mixed := mix[i*2+0] + buffer[i]
-                    mix[i*2+0] = mixed
-                    mix[i*2+1] = mixed
-                }
-            }
+            channel.UpdateRow()
         }
-
-        for i := range mix {
-            mix[i] = max(min(mix[i], 1), -1)
-            // mix[i] = float32(math.Tanh(float64(mix[i])))
-        }
-
-        return true
     }
+    for _, channel := range player.Channels {
+        channel.UpdateTick(player.tick)
+    }
+    // The MOD tick is 2.5 / BPM seconds. Like OpenMPT's classic tempo
+    // mode, truncate each tick to a whole number of output frames.
+    player.framesLeft = max(1, player.SampleRate * 5 / (2 * player.BPM))
+}
 
-    mixPosition := len(mix)
-    reader := func(data []byte) (int, error) {
+func (player *Player) renderFrames(frames int) {
+    for _, channel := range player.Channels {
+        channel.render(frames)
+    }
+    player.framesLeft -= frames
+    if player.framesLeft != 0 {
+        return
+    }
+    player.tick++
+    if player.tick < player.Speed {
+        return
+    }
+    player.tick = 0
+
+    oldOrder := player.CurrentOrder
+    if player.jumpOrder >= 0 {
+        player.CurrentOrder = player.jumpOrder
+        player.CurrentRow = player.breakRow
+        player.jumpOrder = -1
+        player.breakRow = 0
+    } else {
+        player.CurrentRow++
+        if player.CurrentRow >= len(player.ModFile.Patterns[player.GetPattern()].Rows) {
+            player.CurrentRow = 0
+            player.CurrentOrder++
+        }
+    }
+    wrapped := player.CurrentOrder >= player.ModFile.SongLength
+    if wrapped {
+        player.CurrentOrder = 0
+    }
+    if (wrapped || oldOrder != player.CurrentOrder) && player.OnChangeOrder != nil {
+        player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
+    }
+}
+
+func (player *Player) Update(timeDelta float32) {
+    player.frameRemainder += float64(timeDelta) * float64(player.SampleRate)
+    // Callers supply float32 durations (e.g. 1/100), which can land
+    // just below a whole frame. Keep the fractional frame between calls.
+    frames := int(player.frameRemainder)
+    player.frameRemainder -= float64(frames)
+    for frames > 0 {
+        if player.framesLeft == 0 {
+            player.beginTick()
+        }
+        count := min(frames, player.framesLeft)
+        player.renderFrames(count)
+        frames -= count
+    }
+}
+
+// RenderToPCM produces one pass of interleaved little-endian stereo float32.
+func (player *Player) RenderToPCM() io.Reader {
+    var buffer, mix []float32
+    var pcm, pending []byte
+    seen := make(map[[2]int]bool)
+    return &common.ReaderFunc{Func: func(data []byte) (int, error) {
         if len(data) == 0 {
             return 0, nil
         }
-
-        if player.OrdersPlayed >= player.ModFile.SongLength {
-            return 0, io.EOF
+        if len(pending) == 0 {
+            if player.framesLeft == 0 {
+                if player.tick == 0 {
+                    row := [2]int{player.CurrentOrder, player.CurrentRow}
+                    if seen[row] || player.ModFile.SongLength == 0 {
+                        return 0, io.EOF
+                    }
+                    seen[row] = true
+                }
+                player.beginTick()
+            }
+            frames := player.framesLeft
+            if cap(buffer) < frames {
+                buffer = make([]float32, frames)
+                mix = make([]float32, 2 * frames)
+                pcm = make([]byte, 8 * frames)
+            }
+            buffer, mix, pcm = buffer[:frames], mix[:2*frames], pcm[:8*frames]
+            clear(mix)
+            player.renderFrames(frames)
+            for _, channel := range player.Channels {
+                amount := channel.AudioBuffer.Read(buffer)
+                if !channel.Mute {
+                    for i, sample := range buffer[:amount] {
+                        mix[i*2] += sample
+                        mix[i*2+1] += sample
+                    }
+                }
+            }
+            for i, sample := range mix {
+                binary.LittleEndian.PutUint32(pcm[i*4:], math.Float32bits(max(-1, min(1, sample))))
+            }
+            pending = pcm
         }
-
-        // wait for the music to be produced
-        if mixPosition < len(mix) {
-            part := mix[mixPosition:]
-
-            // log.Printf("Partial Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
-
-            amount := common.CopyFloat32(data, part)
-
-            /*
-            amount := min(len(data), len(part))
-            copy(data, part[:amount])
-            */
-            mixPosition += amount
-            return amount * 4, nil
-        }
-
-        mixPosition = 0
-
-        more := fillMix()
-        if !more {
-            return 0, io.EOF
-        }
-
-        // copy the mix into the data buffer
-        // log.Printf("Copying %v bytes of audio data to %v", (len(mix) - mixPosition) * 4, len(data))
-        amount := common.CopyFloat32(data, mix)
-        mixPosition += amount
-
-        return amount * 4, nil
-    }
-
-    return &common.ReaderFunc{
-        Func: reader,
-    }
+        count := copy(data, pending)
+        pending = pending[count:]
+        return count, nil
+    }}
 }
