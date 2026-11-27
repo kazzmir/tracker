@@ -13,13 +13,13 @@ type Channel struct {
 	buffer                   []float32
 	Mute                     bool
 
-	note                           Note
-	instrument, voice              *Instrument
-	sample                         *Sample
-	position, period, target       float64
-	volume, pan                    int
-	released                       bool
-	fade, volumeTick, panTick, age int
+	note                                            Note
+	instrument, voice                               *Instrument
+	sample                                          *Sample
+	position, period, target                        float64
+	volume, pan                                     int
+	released                                        bool
+	fade, volumeTick, panTick, autoPhase, autoDepth int
 
 	slideUp, slideDown, tone, slideVolume, sampleOffset, panSlide, retrig int
 	vibratoSpeed, vibratoDepth, vibratoPhase                              int
@@ -52,13 +52,16 @@ func (e Envelope) advance(tick int, released bool) int {
 	if !e.enabled() {
 		return tick
 	}
-	if e.Flags&2 != 0 && e.Sustain < e.Count && !released && tick == int(e.Points[2*e.Sustain]) {
-		return tick
+	next := tick + 1
+	sustain := e.Flags&2 != 0 && e.Sustain < e.Count
+	if e.Flags&4 != 0 && e.LoopStart <= e.LoopEnd && e.LoopEnd < e.Count &&
+		next == int(e.Points[2*e.LoopEnd]) && !(released && sustain && e.Sustain == e.LoopEnd) {
+		next = int(e.Points[2*e.LoopStart])
 	}
-	if e.Flags&4 != 0 && e.LoopStart <= e.LoopEnd && e.LoopEnd < e.Count && tick >= int(e.Points[2*e.LoopEnd]) {
-		return int(e.Points[2*e.LoopStart])
+	if sustain && !released && next == int(e.Points[2*e.Sustain])+1 {
+		return next - 1
 	}
-	return tick + 1
+	return min(next, int(e.Points[2*int(e.Count)-2]))
 }
 
 func (c *Channel) notePeriod(note, relative, tune int) float64 {
@@ -110,9 +113,7 @@ func (c *Channel) trigger() {
 			c.left, c.right = 0, 0
 			if n.EffectType == EffectSetSampleOffset {
 				offset := c.sampleOffset * 256
-				if s.Type&0x10 != 0 {
-					offset /= 2
-				}
+				// XM offsets count decoded sample frames, including for 16-bit data.
 				c.position = float64(offset)
 				if offset >= len(s.Data) {
 					c.sample = nil
@@ -124,7 +125,8 @@ func (c *Channel) trigger() {
 		c.volume, c.pan = int(min(c.sample.Volume, 64)), int(c.sample.Panning)
 	}
 	if c.sample != nil && (n.Instrument > 0 || (n.NoteNumber > 0 && !porta)) {
-		c.fade, c.volumeTick, c.panTick, c.age = 65536, 0, 0, 0
+		c.fade, c.volumeTick, c.panTick = 65536, 0, 0
+		c.autoPhase, c.autoDepth = 0, 0
 		c.released = false
 	}
 }
@@ -351,7 +353,17 @@ func (c *Channel) updateTick(tick int) {
 	}
 	if n.EffectType == EffectArpeggio && x != 0 {
 		semitone := 0
-		switch tick % 3 {
+		// FT2 indexes the arpeggio table with the row's tick countdown.
+		arp := 0
+		if tick != 0 {
+			arp = c.player.Speed - tick%c.player.Speed
+			if arp > 16 {
+				arp = 2
+			} else if arp == 16 {
+				arp = 0
+			}
+		}
+		switch arp % 3 {
 		case 1:
 			semitone = x >> 4
 		case 2:
@@ -364,26 +376,8 @@ func (c *Channel) updateTick(tick int) {
 		}
 	}
 	inst := c.voice
-	if inst.VibratoDepth > 0 && inst.VibratoRate > 0 {
-		phase := float64(((c.age+1)*int(inst.VibratoRate))&255) / 256
-		wave := -math.Sin(phase * 2 * math.Pi)
-		switch inst.VibratoType {
-		case 1:
-			if phase < .5 {
-				wave = -1
-			} else {
-				wave = 1
-			}
-		case 2:
-			wave = phase*2 - 1
-		case 3:
-			wave = 1 - phase*2
-		}
-		depth := float64(inst.VibratoDepth) / 4
-		if inst.VibratoSweep > 0 {
-			depth *= min(1, float64(c.age+1)/float64(inst.VibratoSweep))
-		}
-		period += math.Trunc(math.Round(wave*64) * depth / 64)
+	if inst.VibratoDepth > 0 {
+		period += float64(c.autoVibrato(inst))
 	}
 	freq := 8363 * 1712 / max(1, period)
 	if c.player.XMFile.LinearPeriods {
@@ -409,7 +403,40 @@ func (c *Channel) updateTick(tick int) {
 	if c.released {
 		c.fade = max(0, c.fade-int(inst.Fadeout)*2)
 	}
-	c.age++
+}
+
+// FastTracker's instrument vibrato sweeps in with 8-bit fractional depth.
+func (c *Channel) autoVibrato(inst *Instrument) int {
+	fullDepth := int(inst.VibratoDepth) * 256
+	depth := fullDepth
+	if sweep := int(inst.VibratoSweep); sweep > 0 {
+		step := fullDepth / sweep
+		if !c.released {
+			c.autoDepth += step
+		}
+		depth = min(c.autoDepth, fullDepth)
+		// Releasing before the sweep completes leaves only its first step.
+		if c.released && c.autoDepth <= fullDepth {
+			depth = step
+		}
+	}
+	c.autoPhase = (c.autoPhase + int(inst.VibratoRate)) & 255
+	phase := c.autoPhase
+	var wave int
+	switch inst.VibratoType {
+	case 1:
+		wave = -64
+		if phase >= 128 {
+			wave = 64
+		}
+	case 2:
+		wave = ((64 + phase/2) & 127) - 64
+	case 3:
+		wave = ((64 - phase/2) & 127) - 64
+	default:
+		wave = -int(math.Round(64 * math.Sin(float64(phase)*math.Pi/128)))
+	}
+	return wave * depth / (64 * 256)
 }
 
 func (c *Channel) render(frames int) {
