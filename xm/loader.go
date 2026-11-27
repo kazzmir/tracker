@@ -7,7 +7,6 @@ import (
     "log"
     "bytes"
     "encoding/binary"
-    "errors"
 )
 
 type XMFile struct {
@@ -134,6 +133,16 @@ type Pattern struct {
 
 type Instrument struct {
     Samples []Sample
+    Keymap [96]byte
+    VolumeEnvelope Envelope
+    PanEnvelope Envelope
+    Fadeout uint16
+    VibratoType, VibratoSweep, VibratoDepth, VibratoRate byte
+}
+
+type Envelope struct {
+    Points [24]uint16 // pairs of tick and value
+    Count, Sustain, LoopStart, LoopEnd, Flags byte
 }
 
 type Sample struct {
@@ -429,6 +438,7 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*XMFile, error) {
         orderData = orderData[:songLength]
     }
 
+    // Missing pattern slots are played as empty 64-row patterns.
     logger.Printf("Pattern Order Data: %v", orderData)
 
     // pattern data
@@ -447,6 +457,12 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*XMFile, error) {
 
         notes := pattern.ParseNotes()
         logger.Printf("Pattern %d notes: %d", i, len(notes))
+    }
+
+    for _, index := range orderData {
+        for int(index) >= len(patterns) {
+            patterns = append(patterns, Pattern{Rows: 64})
+        }
     }
 
     var instruments []*Instrument
@@ -489,6 +505,9 @@ func readPattern(logger *log.Logger, reader *bufio.Reader, maximumFileSize int64
     }
     // log.Printf("Pattern Header Size: %d", patternHeaderSize)
 
+    if patternHeaderSize < 9 {
+        return Pattern{}, fmt.Errorf("pattern header too short: %d", patternHeaderSize)
+    }
     if int64(patternHeaderSize) > maximumFileSize {
         return Pattern{}, fmt.Errorf("Pattern header size exceeds maximum file size: %d > %d", patternHeaderSize, maximumFileSize)
     }
@@ -516,7 +535,9 @@ func readPattern(logger *log.Logger, reader *bufio.Reader, maximumFileSize int64
         return Pattern{}, fmt.Errorf("Error reading packed size: %v", err)
     }
 
-    // log.Printf("Packed Size: %d", packedSize)
+    if _, err := reader.Discard(int(patternHeaderSize - 9)); err != nil {
+        return Pattern{}, err
+    }
     if packedSize > 0 {
         var buffer bytes.Buffer
         // patternData := make([]byte, packedSize)
@@ -532,12 +553,17 @@ func readPattern(logger *log.Logger, reader *bufio.Reader, maximumFileSize int64
         }, nil
     } else {
         logger.Printf("Empty pattern..")
-        return Pattern{}, nil
+        return Pattern{Rows: rows}, nil
     }
 }
 
 func readInstrument(logger *log.Logger, reader_ io.Reader, instrumentHeaderSize uint32) (*Instrument, error) {
-    instrumentReader := bufio.NewReader(io.LimitReader(reader_, int64(instrumentHeaderSize - 4)))
+    if instrumentHeaderSize < 29 {
+        return nil, fmt.Errorf("instrument header too short: %d", instrumentHeaderSize)
+    }
+    instrumentHeader := &io.LimitedReader{R: reader_, N: int64(instrumentHeaderSize - 4)}
+    instrumentReader := bufio.NewReader(instrumentHeader)
+    instrument := &Instrument{}
 
     name := make([]byte, 22)
     _, err := io.ReadFull(instrumentReader, name)
@@ -558,28 +584,27 @@ func readInstrument(logger *log.Logger, reader_ io.Reader, instrumentHeaderSize 
         return nil, fmt.Errorf("Error reading sample count: %v", err)
     }
 
-    var sampleHeaderSizes []uint32
+    var sampleHeaderSize uint32
 
     logger.Printf("Sample Count: %d", samples)
-    for range samples {
-        var sampleHeaderSize uint32
+    if samples > 0 {
         err = binary.Read(instrumentReader, binary.LittleEndian, &sampleHeaderSize)
         if err != nil {
             return nil, fmt.Errorf("Error reading sample header size: %v", err)
         }
         logger.Printf("Sample Header Size: %d", sampleHeaderSize)
 
-        sampleHeaderSizes = append(sampleHeaderSizes, sampleHeaderSize)
-
-        keymapAssignments := make([]byte, 96)
-        _, err = io.ReadFull(instrumentReader, keymapAssignments)
+        if sampleHeaderSize < 40 {
+            return nil, fmt.Errorf("sample header too short: %d", sampleHeaderSize)
+        }
+        _, err = io.ReadFull(instrumentReader, instrument.Keymap[:])
         if err != nil {
             return nil, fmt.Errorf("Error reading keymap assignments: %v", err)
         }
 
         // log.Printf("Keymap Assignments: %d", keymapAssignments)
 
-        volumeEnvelopePoints := make([]uint16, 24)
+        volumeEnvelopePoints := instrument.VolumeEnvelope.Points[:]
         for i := range volumeEnvelopePoints {
             err = binary.Read(instrumentReader, binary.LittleEndian, &volumeEnvelopePoints[i])
             if err != nil {
@@ -587,7 +612,7 @@ func readInstrument(logger *log.Logger, reader_ io.Reader, instrumentHeaderSize 
             }
         }
 
-        panningEnvelopePoints := make([]uint16, 24)
+        panningEnvelopePoints := instrument.PanEnvelope.Points[:]
         for i := range panningEnvelopePoints {
             err = binary.Read(instrumentReader, binary.LittleEndian, &panningEnvelopePoints[i])
             if err != nil {
@@ -696,23 +721,24 @@ func readInstrument(logger *log.Logger, reader_ io.Reader, instrumentHeaderSize 
 
         logger.Printf("Volume: %d", volumeFadeOut)
 
-        instrumentReader.Discard(22) // reserved 22 bytes
+        instrument.VolumeEnvelope = Envelope{instrument.VolumeEnvelope.Points, min(volumePoints, 12), volumeSustainPoint, volumeLoopStart, volumeLoopEnd, volumeType}
+        instrument.PanEnvelope = Envelope{instrument.PanEnvelope.Points, min(panningPoints, 12), panningSustainPoint, panningLoopStart, panningLoopEnd, panningType}
+        instrument.Fadeout = volumeFadeOut
+        instrument.VibratoType, instrument.VibratoSweep, instrument.VibratoDepth, instrument.VibratoRate = vibratoType, vibratoSweep, vibratoDepth, vibratoRate
     }
 
-    for {
-        _, err = instrumentReader.Discard(1)
-        if err != nil {
-            break
-        } else {
-            logger.Printf("Extra byte in instrument header")
-        }
+    if _, err := io.Copy(io.Discard, instrumentReader); err != nil {
+        return nil, err
+    }
+    if instrumentHeader.N != 0 {
+        return nil, io.ErrUnexpectedEOF
     }
 
     var sampleData []Sample
 
-    for i := range samples {
-
-        sampleReader := bufio.NewReader(io.LimitReader(reader_, int64(sampleHeaderSizes[i])))
+    for range samples {
+        sampleHeader := &io.LimitedReader{R: reader_, N: int64(sampleHeaderSize)}
+        sampleReader := bufio.NewReader(sampleHeader)
 
         var sampleLength uint32
         err = binary.Read(sampleReader, binary.LittleEndian, &sampleLength)
@@ -786,6 +812,12 @@ func readInstrument(logger *log.Logger, reader_ io.Reader, instrumentHeaderSize 
             return nil, fmt.Errorf("Error reading sample name: %v", err)
         }
 
+        if _, err := io.Copy(io.Discard, sampleReader); err != nil {
+            return nil, err
+        }
+        if sampleHeader.N != 0 {
+            return nil, io.ErrUnexpectedEOF
+        }
         sampleName = bytes.TrimRight(sampleName, "\x00")
         logger.Printf("Sample Name: '%s'", sampleName)
 
@@ -803,15 +835,10 @@ func readInstrument(logger *log.Logger, reader_ io.Reader, instrumentHeaderSize 
         })
     }
 
-    _, err = instrumentReader.Discard(1)
-    if !errors.Is(err, io.EOF) {
-        return nil, fmt.Errorf("Error discarding byte after sample data: %v", err)
-    }
-
     for i := range sampleData {
         sampleReader := bufio.NewReader(io.LimitReader(reader_, int64(sampleData[i].Length)))
 
-        is8Bit := sampleData[i].Type & 0b1000 == 0
+        is8Bit := sampleData[i].Type & 0x10 == 0
         if is8Bit {
             numSamples := sampleData[i].Length
             logger.Printf("Reading 8-bit sample data for sample %d, samples %d", i, numSamples)
@@ -830,6 +857,8 @@ func readInstrument(logger *log.Logger, reader_ io.Reader, instrumentHeaderSize 
         } else {
             // 16-bit
             numSamples := sampleData[i].Length / 2
+            sampleData[i].LoopStart /= 2
+            sampleData[i].LoopLength /= 2
             logger.Printf("Reading 16-bit sample data for sample %d samples %d", i, numSamples)
 
             var last int16 = 0
@@ -848,7 +877,6 @@ func readInstrument(logger *log.Logger, reader_ io.Reader, instrumentHeaderSize 
 
     }
 
-    return &Instrument{
-        Samples: sampleData,
-    }, nil
+    instrument.Samples = sampleData
+    return instrument, nil
 }
