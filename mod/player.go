@@ -631,6 +631,10 @@ func (player *Player) GetName() string {
     return player.ModFile.Name
 }
 
+func (player *Player) GetPatternRowCount() int {
+    return len(player.ModFile.Patterns[player.GetPattern()].Rows)
+}
+
 func (player *Player) GetRowNoteInfo(channel int, rowNumber int) (common.NoteInfo, bool) {
     return player.GetRowNote(channel, rowNumber)
 }

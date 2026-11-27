@@ -223,6 +223,8 @@ func (player *Player) GetRowNote(index, row int) (*Note, bool) {
 	}
 	return &rows[row][index], true
 }
+func (player *Player) GetPatternRowCount() int { return 64 }
+
 func (player *Player) GetRowNoteInfo(index, row int) (common.NoteInfo, bool) {
 	return player.GetRowNote(index, row)
 }

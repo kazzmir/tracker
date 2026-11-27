@@ -213,6 +213,8 @@ func (player *Player) GetChannelCount() int { return len(player.channels) }
 func (player *Player) GetSpeed() int        { return player.speed }
 func (player *Player) GetBPM() int          { return player.tempo }
 func (player *Player) IsStereo() bool       { return true }
+func (player *Player) GetPatternRowCount() int { return len(player.pattern().rows) }
+
 func (player *Player) GetRowNoteInfo(ch, row int) (common.NoteInfo, bool) {
 	pat := player.pattern()
 	if ch < 0 || ch >= len(player.channels) || row < 0 || row >= len(pat.rows) {

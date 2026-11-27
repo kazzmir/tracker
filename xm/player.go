@@ -219,6 +219,13 @@ func (p *Player) GetRowNote(channel, row int) (*Note, bool) {
 	}
 	return &notes[channel], true
 }
+func (p *Player) GetPatternRowCount() int {
+	if pattern := p.XMFile.GetPattern(p.Order); pattern != nil {
+		return int(pattern.Rows)
+	}
+	return 0
+}
+
 func (p *Player) GetRowNoteInfo(channel, row int) (common.NoteInfo, bool) {
 	return p.GetRowNote(channel, row)
 }
