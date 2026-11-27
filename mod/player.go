@@ -67,6 +67,10 @@ type Channel struct {
 
     startPosition float64
     fineTune int8
+    looped bool
+    mixVolume float32
+    volumeStep float32
+    rampFrames int
 }
 
 func (channel *Channel) Read(data []byte) (int, error) {
@@ -332,6 +336,9 @@ func (channel *Channel) applyNote(note *Note) {
             channel.Volume = float32(min(sample.Volume, 64)) / 64
         }
         if !tonePortamento || !playing {
+            if channel.CurrentSample != sample {
+                channel.looped = false
+            }
             channel.CurrentSample = sample
             if sample != nil {
                 channel.fineTune = int8(sample.FineTune << 4) >> 4
@@ -349,7 +356,10 @@ func (channel *Channel) applyNote(note *Note) {
         if trigger {
             newFrequency = period
             channel.startPosition = 0
+            channel.looped = false
             channel.Vibrato.position = 0
+            channel.mixVolume = 0
+            channel.rampFrames = 0
         }
     }
 
@@ -459,6 +469,19 @@ func (channel *Channel) applyNote(note *Note) {
     channel.CurrentFrequency = newFrequency
 }
 
+func (channel *Channel) beginMixTick() {
+    if channel.Volume == channel.mixVolume {
+        channel.rampFrames = 0
+        return
+    }
+    duration := 952 // microseconds, release
+    if channel.Volume > channel.mixVolume {
+        duration = 363 // attack
+    }
+    channel.rampFrames = max(1, (channel.Player.SampleRate * duration + 500000) / 1000000)
+    channel.volumeStep = (channel.Volume - channel.mixVolume) / float32(channel.rampFrames)
+}
+
 func (channel *Channel) render(samples int) {
     channel.AudioBuffer.Lock()
     channel.ScopeBuffer.Lock()
@@ -488,18 +511,21 @@ func (channel *Channel) render(samples int) {
     }
     position := channel.startPosition
     for range samples {
+        if channel.rampFrames > 0 {
+            channel.mixVolume += channel.volumeStep
+            channel.rampFrames--
+            if channel.rampFrames == 0 {
+                channel.mixVolume = channel.Volume
+            }
+        }
         var value float32
         i := int(position)
         if i < end {
-            next := min(i + 1, end - 1)
-            if looping && i + 1 == end {
-                next = loopStart
-            }
-            value = data[i] + float32(position - float64(i)) * (data[next] - data[i])
-            value *= channel.Volume
+            value = interpolate(data, position, end, loopStart, looping, channel.looped) * channel.mixVolume
             position += increment
             if looping && position >= float64(end) {
                 position = float64(loopStart) + math.Mod(position - float64(end), float64(end - loopStart))
+                channel.looped = true
             }
         }
         channel.AudioBuffer.UnsafeWrite(value)
@@ -707,6 +733,7 @@ func (player *Player) beginTick() {
     }
     for _, channel := range player.Channels {
         channel.UpdateTick(player.tick)
+        channel.beginMixTick()
     }
     // The MOD tick is 2.5 / BPM seconds. Like OpenMPT's classic tempo
     // mode, truncate each tick to a whole number of output frames.
@@ -751,9 +778,9 @@ func (player *Player) renderFrames(frames int) {
 
 func (player *Player) Update(timeDelta float32) {
     player.frameRemainder += float64(timeDelta) * float64(player.SampleRate)
-    // Callers supply float32 durations (e.g. 1/100), which can land
-    // just below a whole frame. Keep the fractional frame between calls.
-    frames := int(player.frameRemainder)
+    // Round to the nearest frame and carry the error, so approximate
+    // float32 durations such as 1/100 don't start a frame late.
+    frames := int(math.Round(player.frameRemainder))
     player.frameRemainder -= float64(frames)
     for frames > 0 {
         if player.framesLeft == 0 {
@@ -804,8 +831,10 @@ func (player *Player) RenderToPCM() io.Reader {
                     }
                 }
             }
+            // Preserve peaks in float PCM; clip only at the audio device
+            // or when converting to an integer format.
             for i, sample := range mix {
-                binary.LittleEndian.PutUint32(pcm[i*4:], math.Float32bits(max(-1, min(1, sample))))
+                binary.LittleEndian.PutUint32(pcm[i*4:], math.Float32bits(sample))
             }
             pending = pcm
         }
