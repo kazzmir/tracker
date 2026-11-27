@@ -22,130 +22,130 @@ type Player struct {
 	onSpeed                               func(int, int)
 }
 
-func MakePlayer(m *Module, rate int) *Player {
-	p := &Player{module: m, rate: max(1000, rate), speed: m.speed, tempo: m.tempo, global: m.globalVolume, nextOrder: -1, channels: make([]channel, m.channels)}
-	for i := range p.channels {
-		c := &p.channels[i]
-		c.player = p
-		c.buffer = common.MakeAudioBuffer(p.rate * 2)
-		c.scope = common.MakeAudioBuffer(p.rate / 5)
-		c.readBuffer = make([]float32, p.rate*2)
-		c.volume = 64
-		c.channelVolume = min(64, int(m.channelVolume[i]))
-		pan := m.pan[i] & 127
-		c.pan = 128
-		c.surround = pan == 100
+func MakePlayer(module *Module, rate int) *Player {
+	player := &Player{module: module, rate: max(1000, rate), speed: module.speed, tempo: module.tempo, global: module.globalVolume, nextOrder: -1, channels: make([]channel, module.channels)}
+	for index := range player.channels {
+		track := &player.channels[index]
+		track.player = player
+		track.buffer = common.MakeAudioBuffer(player.rate * 2)
+		track.scope = common.MakeAudioBuffer(player.rate / 5)
+		track.readBuffer = make([]float32, player.rate*2)
+		track.volume = 64
+		track.channelVolume = min(64, int(module.channelVolume[index]))
+		pan := module.pan[index] & 127
+		track.pan = 128
+		track.surround = pan == 100
 		if pan <= 64 {
-			c.pan = int(pan) * 4
+			track.pan = int(pan) * 4
 		}
-		c.mute.Store(m.pan[i]&128 != 0)
+		track.mute.Store(module.pan[index]&128 != 0)
 	}
-	p.order = p.findOrder(0)
-	return p
+	player.order = player.findOrder(0)
+	return player
 }
 
 var emptyPattern = pattern{rows: make([][maxChannels]Note, 64)}
 
-func (p *Player) pattern() *pattern {
-	index := p.GetPattern()
-	if index < 0 || index >= len(p.module.patterns) {
+func (player *Player) pattern() *pattern {
+	index := player.GetPattern()
+	if index < 0 || index >= len(player.module.patterns) {
 		return &emptyPattern
 	}
-	return &p.module.patterns[index]
+	return &player.module.patterns[index]
 }
 
-func (p *Player) findOrder(order int) int {
-	for order < len(p.module.orders) {
-		switch p.module.orders[order] {
+func (player *Player) findOrder(order int) int {
+	for order < len(player.module.orders) {
+		switch player.module.orders[order] {
 		case 255:
-			return len(p.module.orders)
+			return len(player.module.orders)
 		case 254:
 			order++
 		default:
 			return order
 		}
 	}
-	return len(p.module.orders)
+	return len(player.module.orders)
 }
 
-func (p *Player) beginTick() {
-	if p.tick == 0 {
-		p.delay, p.extraTicks = 0, 0
-		if p.onRow != nil {
-			p.onRow(p.row)
+func (player *Player) beginTick() {
+	if player.tick == 0 {
+		player.delay, player.extraTicks = 0, 0
+		if player.onRow != nil {
+			player.onRow(player.row)
 		}
-		row := p.pattern().rows[p.row]
-		for i := range p.channels {
-			p.channels[i].beginRow(row[i])
+		row := player.pattern().rows[player.row]
+		for index := range player.channels {
+			player.channels[index].beginRow(row[index])
 		}
 	}
-	for i := range p.channels {
-		p.channels[i].updateTick(p.tick)
+	for index := range player.channels {
+		player.channels[index].updateTick(player.tick)
 	}
-	for i := range p.channels {
-		p.channels[i].prepareVoices()
+	for index := range player.channels {
+		player.channels[index].prepareVoices()
 	}
-	p.framesLeft = max(1, p.rate*5/(2*p.tempo))
+	player.framesLeft = max(1, player.rate*5/(2*player.tempo))
 }
 
-func (p *Player) renderFrames(frames int) {
-	for i := range p.channels {
-		p.channels[i].render(frames)
+func (player *Player) renderFrames(frames int) {
+	for index := range player.channels {
+		player.channels[index].render(frames)
 	}
-	p.framesLeft -= frames
-	if p.framesLeft != 0 {
+	player.framesLeft -= frames
+	if player.framesLeft != 0 {
 		return
 	}
-	p.tick++
-	if p.tick < (p.speed+p.extraTicks)*(p.delay+1) {
+	player.tick++
+	if player.tick < (player.speed+player.extraTicks)*(player.delay+1) {
 		return
 	}
-	p.tick = 0
-	old := p.order
-	if p.nextOrder >= 0 {
-		p.order, p.row = p.findOrder(p.nextOrder), p.nextRow
+	player.tick = 0
+	old := player.order
+	if player.nextOrder >= 0 {
+		player.order, player.row = player.findOrder(player.nextOrder), player.nextRow
 	} else {
-		p.row++
-		if p.row >= len(p.pattern().rows) {
-			p.order, p.row = p.findOrder(p.order+1), 0
+		player.row++
+		if player.row >= len(player.pattern().rows) {
+			player.order, player.row = player.findOrder(player.order+1), 0
 		}
 	}
-	p.nextOrder, p.nextRow = -1, 0
-	if p.row >= len(p.pattern().rows) {
-		p.row = 0
+	player.nextOrder, player.nextRow = -1, 0
+	if player.row >= len(player.pattern().rows) {
+		player.row = 0
 	}
-	if old != p.order {
-		for i := range p.channels {
-			p.channels[i].loopCount, p.channels[i].loopRow = 0, 0
+	if old != player.order {
+		for index := range player.channels {
+			player.channels[index].loopCount, player.channels[index].loopRow = 0, 0
 		}
-		if p.order < len(p.module.orders) && p.onOrder != nil {
-			p.onOrder(p.order, p.GetPattern())
+		if player.order < len(player.module.orders) && player.onOrder != nil {
+			player.onOrder(player.order, player.GetPattern())
 		}
 	}
 }
 
-func (p *Player) Update(seconds float32) {
-	p.frameRemainder += float64(seconds) * float64(p.rate)
-	frames := int(math.Round(p.frameRemainder))
-	p.frameRemainder -= float64(frames)
+func (player *Player) Update(seconds float32) {
+	player.frameRemainder += float64(seconds) * float64(player.rate)
+	frames := int(math.Round(player.frameRemainder))
+	player.frameRemainder -= float64(frames)
 	for frames > 0 {
-		if p.order >= len(p.module.orders) {
-			p.seek(0)
-			if p.order >= len(p.module.orders) {
+		if player.order >= len(player.module.orders) {
+			player.seek(0)
+			if player.order >= len(player.module.orders) {
 				return
 			}
 		}
-		if p.framesLeft == 0 {
-			p.beginTick()
+		if player.framesLeft == 0 {
+			player.beginTick()
 		}
-		n := min(frames, p.framesLeft)
-		p.renderFrames(n)
-		frames -= n
+		chunk := min(frames, player.framesLeft)
+		player.renderFrames(chunk)
+		frames -= chunk
 	}
 }
 
 // RenderToPCM renders one pass as interleaved little-endian stereo float32.
-func (p *Player) RenderToPCM() io.Reader {
+func (player *Player) RenderToPCM() io.Reader {
 	var samples, mix []float32
 	var pcm, pending []byte
 	seen := make(map[[2]int]bool)
@@ -154,143 +154,143 @@ func (p *Player) RenderToPCM() io.Reader {
 			return 0, nil
 		}
 		if len(pending) == 0 {
-			if p.order >= len(p.module.orders) {
+			if player.order >= len(player.module.orders) {
 				return 0, io.EOF
 			}
-			if p.framesLeft == 0 {
+			if player.framesLeft == 0 {
 				loop := false
-				for i := range p.channels {
-					loop = loop || p.channels[i].loopCount != 0
+				for index := range player.channels {
+					loop = loop || player.channels[index].loopCount != 0
 				}
-				if p.tick == 0 && !loop {
-					row := [2]int{p.order, p.row}
+				if player.tick == 0 && !loop {
+					row := [2]int{player.order, player.row}
 					if seen[row] {
 						return 0, io.EOF
 					}
 					seen[row] = true
 				}
-				p.beginTick()
+				player.beginTick()
 			}
-			n := p.framesLeft
-			if cap(samples) < n*2 {
-				samples = make([]float32, n*2)
-				mix = make([]float32, n*2)
-				pcm = make([]byte, n*8)
+			frames := player.framesLeft
+			if cap(samples) < frames*2 {
+				samples = make([]float32, frames*2)
+				mix = make([]float32, frames*2)
+				pcm = make([]byte, frames*8)
 			}
-			samples, mix, pcm = samples[:n*2], mix[:n*2], pcm[:n*8]
+			samples, mix, pcm = samples[:frames*2], mix[:frames*2], pcm[:frames*8]
 			clear(mix)
-			p.renderFrames(n)
-			for i := range p.channels {
-				c := &p.channels[i]
-				count := c.buffer.Read(samples)
-				if !c.mute.Load() {
-					for i, v := range samples[:count] {
-						mix[i] += v
+			player.renderFrames(frames)
+			for index := range player.channels {
+				track := &player.channels[index]
+				count := track.buffer.Read(samples)
+				if !track.mute.Load() {
+					for index, value := range samples[:count] {
+						mix[index] += value
 					}
 				}
 			}
-			for i, v := range mix {
-				binary.LittleEndian.PutUint32(pcm[i*4:], math.Float32bits(v))
+			for index, value := range mix {
+				binary.LittleEndian.PutUint32(pcm[index*4:], math.Float32bits(value))
 			}
 			pending = pcm
 		}
-		n := copy(dst, pending)
-		pending = pending[n:]
-		return n, nil
+		copied := copy(dst, pending)
+		pending = pending[copied:]
+		return copied, nil
 	}}
 }
 
-func (p *Player) GetName() string { return p.module.name }
-func (p *Player) GetPattern() int {
-	if p.order < 0 || p.order >= len(p.module.orders) {
+func (player *Player) GetName() string { return player.module.name }
+func (player *Player) GetPattern() int {
+	if player.order < 0 || player.order >= len(player.module.orders) {
 		return -1
 	}
-	return int(p.module.orders[p.order])
+	return int(player.module.orders[player.order])
 }
-func (p *Player) GetCurrentOrder() int { return p.order }
-func (p *Player) GetSongLength() int   { return len(p.module.orders) }
-func (p *Player) GetChannelCount() int { return len(p.channels) }
-func (p *Player) GetSpeed() int        { return p.speed }
-func (p *Player) GetBPM() int          { return p.tempo }
-func (p *Player) IsStereo() bool       { return true }
-func (p *Player) GetRowNoteInfo(ch, row int) (common.NoteInfo, bool) {
-	pat := p.pattern()
-	if ch < 0 || ch >= len(p.channels) || row < 0 || row >= len(pat.rows) {
+func (player *Player) GetCurrentOrder() int { return player.order }
+func (player *Player) GetSongLength() int   { return len(player.module.orders) }
+func (player *Player) GetChannelCount() int { return len(player.channels) }
+func (player *Player) GetSpeed() int        { return player.speed }
+func (player *Player) GetBPM() int          { return player.tempo }
+func (player *Player) IsStereo() bool       { return true }
+func (player *Player) GetRowNoteInfo(ch, row int) (common.NoteInfo, bool) {
+	pat := player.pattern()
+	if ch < 0 || ch >= len(player.channels) || row < 0 || row >= len(pat.rows) {
 		return nil, false
 	}
 	return pat.rows[row][ch], true
 }
-func (p *Player) GetChannelReaders() []io.Reader {
-	out := make([]io.Reader, len(p.channels))
-	for i := range p.channels {
-		out[i] = &p.channels[i]
+func (player *Player) GetChannelReaders() []io.Reader {
+	out := make([]io.Reader, len(player.channels))
+	for index := range player.channels {
+		out[index] = &player.channels[index]
 	}
 	return out
 }
-func (p *Player) GetChannelData(ch int, dst []float32) int {
-	if ch < 0 || ch >= len(p.channels) {
+func (player *Player) GetChannelData(ch int, dst []float32) int {
+	if ch < 0 || ch >= len(player.channels) {
 		return 0
 	}
-	return p.channels[ch].scope.Peek(dst)
+	return player.channels[ch].scope.Peek(dst)
 }
-func (p *Player) ToggleMuteChannel(ch int) bool {
-	if ch < 0 || ch >= len(p.channels) {
+func (player *Player) ToggleMuteChannel(ch int) bool {
+	if ch < 0 || ch >= len(player.channels) {
 		return false
 	}
-	m := &p.channels[ch].mute
+	mute := &player.channels[ch].mute
 	for {
-		old := m.Load()
-		if m.CompareAndSwap(old, !old) {
+		old := mute.Load()
+		if mute.CompareAndSwap(old, !old) {
 			return !old
 		}
 	}
 }
-func (p *Player) SetOnChangeRow(f func(int))        { p.onRow = f }
-func (p *Player) SetOnChangeOrder(f func(int, int)) { p.onOrder = f }
-func (p *Player) SetOnChangeSpeed(f func(int, int)) { p.onSpeed = f }
-func (p *Player) NextOrder()                        { p.seek(p.findOrder(p.order + 1)) }
-func (p *Player) PreviousOrder() {
-	o := p.order - 1
-	for o > 0 && p.module.orders[o] >= 254 {
-		o--
+func (player *Player) SetOnChangeRow(callback func(int))        { player.onRow = callback }
+func (player *Player) SetOnChangeOrder(callback func(int, int)) { player.onOrder = callback }
+func (player *Player) SetOnChangeSpeed(callback func(int, int)) { player.onSpeed = callback }
+func (player *Player) NextOrder()                               { player.seek(player.findOrder(player.order + 1)) }
+func (player *Player) PreviousOrder() {
+	order := player.order - 1
+	for order > 0 && player.module.orders[order] >= 254 {
+		order--
 	}
-	p.seek(max(0, o))
+	player.seek(max(0, order))
 }
-func (p *Player) ResetRow() { p.seek(p.order) }
-func (p *Player) seek(o int) {
-	old := p.order
-	p.order = p.findOrder(o)
-	if p.order >= len(p.module.orders) {
-		p.order = p.findOrder(0)
+func (player *Player) ResetRow() { player.seek(player.order) }
+func (player *Player) seek(order int) {
+	old := player.order
+	player.order = player.findOrder(order)
+	if player.order >= len(player.module.orders) {
+		player.order = player.findOrder(0)
 	}
-	p.row, p.tick, p.framesLeft, p.nextOrder, p.nextRow = 0, 0, 0, -1, 0
-	for i := range p.channels {
-		c := &p.channels[i]
-		c.voice = voice{}
-		c.tails = c.tails[:0]
-		c.loopCount, c.loopRow = 0, 0
-		c.buffer.Clear()
+	player.row, player.tick, player.framesLeft, player.nextOrder, player.nextRow = 0, 0, 0, -1, 0
+	for index := range player.channels {
+		track := &player.channels[index]
+		track.voice = voice{}
+		track.tails = track.tails[:0]
+		track.loopCount, track.loopRow = 0, 0
+		track.buffer.Clear()
 	}
-	if old != p.order && p.onOrder != nil && p.order < len(p.module.orders) {
-		p.onOrder(p.order, p.GetPattern())
+	if old != player.order && player.onOrder != nil && player.order < len(player.module.orders) {
+		player.onOrder(player.order, player.GetPattern())
 	}
 }
 
-func (c *channel) Read(dst []byte) (int, error) {
-	count := min(len(c.readBuffer), len(dst)/8*2)
-	part := c.readBuffer[:count]
-	n := c.buffer.Read(part)
-	if c.mute.Load() {
-		clear(part[:n])
+func (track *channel) Read(dst []byte) (int, error) {
+	count := min(len(track.readBuffer), len(dst)/8*2)
+	part := track.readBuffer[:count]
+	read := track.buffer.Read(part)
+	if track.mute.Load() {
+		clear(part[:read])
 	}
-	for i, s := range part[:n] {
-		binary.LittleEndian.PutUint32(dst[i*4:], math.Float32bits(s))
+	for index, value := range part[:read] {
+		binary.LittleEndian.PutUint32(dst[index*4:], math.Float32bits(value))
 	}
-	if n == 0 && runtime.GOOS == "js" && len(dst) >= 8 {
+	if read == 0 && runtime.GOOS == "js" && len(dst) >= 8 {
 		clear(dst[:8])
 		return 8, nil
 	}
-	return n * 4, nil
+	return read * 4, nil
 }
 
 type channel struct {

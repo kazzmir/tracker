@@ -12,18 +12,18 @@ type bitReader struct {
 	count int
 }
 
-func (r *bitReader) read(width int) (int, error) {
-	for r.count < width {
-		if len(r.data) == 0 {
+func (reader *bitReader) read(width int) (int, error) {
+	for reader.count < width {
+		if len(reader.data) == 0 {
 			return 0, io.ErrUnexpectedEOF
 		}
-		r.bits |= uint32(r.data[0]) << r.count
-		r.data = r.data[1:]
-		r.count += 8
+		reader.bits |= uint32(reader.data[0]) << reader.count
+		reader.data = reader.data[1:]
+		reader.count += 8
 	}
-	value := int(r.bits & ((1 << width) - 1))
-	r.bits >>= width
-	r.count -= width
+	value := int(reader.bits & ((1 << width) - 1))
+	reader.bits >>= width
+	reader.count -= width
 	return value, nil
 }
 
@@ -49,11 +49,11 @@ func decompress(data []byte, dst []float32, bits int, it215 bool) ([]byte, error
 		count := min(len(dst), 32768/(bits/8))
 		width := maxWidth
 		var delta, value uint16
-		for i := 0; i < count; {
+		for index := 0; index < count; {
 			if width < 1 || width > maxWidth {
 				return nil, fmt.Errorf("invalid IT sample bit width %d", width)
 			}
-			v, err := reader.read(width)
+			code, err := reader.read(width)
 			if err != nil {
 				return nil, err
 			}
@@ -62,18 +62,18 @@ func decompress(data []byte, dst []float32, bits int, it215 bool) ([]byte, error
 			// a range around the sign bit. The widest width has a dedicated flag.
 			change := -1
 			switch {
-			case width <= 6 && v == top:
+			case width <= 6 && code == top:
 				change, err = reader.read(selectorBits)
 				if err != nil {
 					return nil, err
 				}
 			case width > 6 && width < maxWidth:
 				low := top - (1 << (selectorBits - 1))
-				if v >= low && v < low+(1<<selectorBits) {
-					change = v - low
+				if code >= low && code < low+(1<<selectorBits) {
+					change = code - low
 				}
-			case width == maxWidth && v&top != 0:
-				width = (v &^ top) + 1
+			case width == maxWidth && code&top != 0:
+				width = (code &^ top) + 1
 				continue
 			}
 			if change >= 0 {
@@ -84,21 +84,21 @@ func decompress(data []byte, dst []float32, bits int, it215 bool) ([]byte, error
 				width = next
 				continue
 			}
-			if width < maxWidth && v&top != 0 {
-				v -= top * 2
+			if width < maxWidth && code&top != 0 {
+				code -= top * 2
 			}
-			delta += uint16(v)
+			delta += uint16(code)
 			value += delta
 			pcm := delta
 			if it215 {
 				pcm = value
 			}
 			if bits == 8 {
-				dst[i] = float32(int8(pcm)) / 128
+				dst[index] = float32(int8(pcm)) / 128
 			} else {
-				dst[i] = float32(int16(pcm)) / 32768
+				dst[index] = float32(int16(pcm)) / 32768
 			}
-			i++
+			index++
 		}
 		dst = dst[count:]
 	}

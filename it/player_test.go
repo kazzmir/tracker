@@ -12,55 +12,55 @@ import (
 	"time"
 )
 
-func TestRenderPatternBreak(t *testing.T) {
-	m := &Module{orders: []byte{0, 254, 1, 255}, speed: 2, tempo: 125, channels: 1, globalVolume: 128, mixVolume: 128, separation: 128, flags: 1}
-	m.channelVolume[0] = 64
-	m.pan[0] = 0
-	m.samples = []sample{{left: []float32{1, 1}, c5: 8363, volume: 64, globalVolume: 64, loop: sampleLoop{end: 2}}}
-	m.patterns = []pattern{{rows: make([][maxChannels]Note, 2)}, {rows: make([][maxChannels]Note, 3)}}
-	m.patterns[0].rows[0][0] = Note{pitch: 60, instrument: 1, command: effect('C'), param: 2, fields: hasPitch | hasInstrument | hasCommand}
-	m.patterns[1].rows[2][0] = Note{pitch: 254, fields: hasPitch}
-	p := MakePlayer(m, 48000)
+func TestRenderPatternBreak(test *testing.T) {
+	module := &Module{orders: []byte{0, 254, 1, 255}, speed: 2, tempo: 125, channels: 1, globalVolume: 128, mixVolume: 128, separation: 128, flags: 1}
+	module.channelVolume[0] = 64
+	module.pan[0] = 0
+	module.samples = []sample{{left: []float32{1, 1}, c5: 8363, volume: 64, globalVolume: 64, loop: sampleLoop{end: 2}}}
+	module.patterns = []pattern{{rows: make([][maxChannels]Note, 2)}, {rows: make([][maxChannels]Note, 3)}}
+	module.patterns[0].rows[0][0] = Note{pitch: 60, instrument: 1, command: effect('C'), param: 2, fields: hasPitch | hasInstrument | hasCommand}
+	module.patterns[1].rows[2][0] = Note{pitch: 254, fields: hasPitch}
+	player := MakePlayer(module, 48000)
 	var rows []int
-	p.SetOnChangeRow(func(row int) { rows = append(rows, row) })
+	player.SetOnChangeRow(func(row int) { rows = append(rows, row) })
 	// Read with an unaligned buffer to verify byte-stream behavior as well.
 	var out bytes.Buffer
-	pcm := p.RenderToPCM()
-	n, err := io.CopyBuffer(struct{ io.Writer }{&out}, pcm, make([]byte, 137))
-	if err != nil || n != 3840*8 || len(rows) != 2 || rows[0] != 0 || rows[1] != 2 {
-		t.Fatalf("render: %d bytes, %v, rows %v", n, err, rows)
+	pcm := player.RenderToPCM()
+	written, err := io.CopyBuffer(struct{ io.Writer }{&out}, pcm, make([]byte, 137))
+	if err != nil || written != 3840*8 || len(rows) != 2 || rows[0] != 0 || rows[1] != 2 {
+		test.Fatalf("render: %d bytes, %v, rows %v", written, err, rows)
 	}
 	read := func(frame, side int) float32 {
 		return math.Float32frombits(binary.LittleEndian.Uint32(out.Bytes()[frame*8+side*4:]))
 	}
 	if read(100, 0) != 1 || read(100, 1) != 0 || read(2000, 0) != 0 {
-		t.Fatal("incorrect note trigger, panning or cut")
+		test.Fatal("incorrect note trigger, panning or cut")
 	}
 }
 
-func TestBlueFlameAgainstFFplay(t *testing.T) {
+func TestBlueFlameAgainstFFplay(test *testing.T) {
 	const path = "../t1/chris31b.it"
-	f, err := os.Open(path)
+	file, err := os.Open(path)
 	if os.IsNotExist(err) {
-		t.Skip("local IT fixture not available")
+		test.Skip("local IT fixture not available")
 	}
 	if err != nil {
-		t.Fatal(err)
+		test.Fatal(err)
 	}
-	defer f.Close()
-	m, err := Load(f)
+	defer file.Close()
+	module, err := Load(file)
 	if err != nil {
-		t.Fatal(err)
+		test.Fatal(err)
 	}
 	const rate = 48000
 	const frames = 19134239
-	pcm := MakePlayer(m, rate).RenderToPCM()
+	pcm := MakePlayer(module, rate).RenderToPCM()
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
-		t.Skip("FFmpeg is not installed")
+		test.Skip("FFmpeg is not installed")
 	}
 	if out, err := exec.Command(ffmpeg, "-hide_banner", "-h", "demuxer=libopenmpt").CombinedOutput(); err != nil || !bytes.Contains(out, []byte("Demuxer libopenmpt")) {
-		t.Skip("FFmpeg has no libopenmpt demuxer")
+		test.Skip("FFmpeg has no libopenmpt demuxer")
 	}
 	// FFmpeg is only the test oracle. Playback does not call it or libopenmpt.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -69,10 +69,10 @@ func TestBlueFlameAgainstFFplay(t *testing.T) {
 	cmd.Stderr = os.Stderr
 	ref, err := cmd.StdoutPipe()
 	if err != nil {
-		t.Fatal(err)
+		test.Fatal(err)
 	}
 	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
+		test.Fatal(err)
 	}
 	defer func() {
 		if cmd.ProcessState == nil {
@@ -81,44 +81,44 @@ func TestBlueFlameAgainstFFplay(t *testing.T) {
 		}
 	}()
 	var got, want [32768]byte
-	var xx, yy, xy, ee [2]float64
+	var gotPower, wantPower, dot, errorPower [2]float64
 	remaining := frames * 8
 	for remaining > 0 {
-		n := min(remaining, len(got))
-		remaining -= n
-		if _, err := io.ReadFull(pcm, got[:n]); err != nil {
-			t.Fatalf("tracker ended early: %v", err)
+		size := min(remaining, len(got))
+		remaining -= size
+		if _, err := io.ReadFull(pcm, got[:size]); err != nil {
+			test.Fatalf("tracker ended early: %v", err)
 		}
-		if _, err := io.ReadFull(ref, want[:n]); err != nil {
-			t.Fatalf("reference ended early: %v", err)
+		if _, err := io.ReadFull(ref, want[:size]); err != nil {
+			test.Fatalf("reference ended early: %v", err)
 		}
-		for i := 0; i < n; i += 4 {
-			side := i / 4 % 2
-			x := float64(math.Float32frombits(binary.LittleEndian.Uint32(got[i:])))
-			y := float64(math.Float32frombits(binary.LittleEndian.Uint32(want[i:])))
-			xx[side] += x * x
-			yy[side] += y * y
-			xy[side] += x * y
-			ee[side] += (x - y) * (x - y)
+		for offset := 0; offset < size; offset += 4 {
+			side := offset / 4 % 2
+			actual := float64(math.Float32frombits(binary.LittleEndian.Uint32(got[offset:])))
+			expected := float64(math.Float32frombits(binary.LittleEndian.Uint32(want[offset:])))
+			gotPower[side] += actual * actual
+			wantPower[side] += expected * expected
+			dot[side] += actual * expected
+			errorPower[side] += (actual - expected) * (actual - expected)
 		}
 	}
-	if n, err := pcm.Read(got[:]); n != 0 || err != io.EOF {
-		t.Fatalf("tracker did not end at %d frames: %d bytes, %v", frames, n, err)
+	if extra, err := pcm.Read(got[:]); extra != 0 || err != io.EOF {
+		test.Fatalf("tracker did not end at %d frames: %d bytes, %v", frames, extra, err)
 	}
 	// libopenmpt adds up to 100 ms of terminal fade after the musical frames.
 	const maxTail = rate * 8 / 10
-	if n, err := io.Copy(io.Discard, io.LimitReader(ref, maxTail+1)); err != nil || n > maxTail {
-		t.Fatalf("unexpected reference tail: %d bytes, %v", n, err)
+	if tail, err := io.Copy(io.Discard, io.LimitReader(ref, maxTail+1)); err != nil || tail > maxTail {
+		test.Fatalf("unexpected reference tail: %d bytes, %v", tail, err)
 	}
 	if err := cmd.Wait(); err != nil {
-		t.Fatal(err)
+		test.Fatal(err)
 	}
-	for side := range xx {
-		corr := xy[side] / math.Sqrt(xx[side]*yy[side])
-		rms := math.Sqrt(ee[side] / yy[side])
-		t.Logf("side %d: %d frames, correlation %.5f, normalized RMS error %.4f", side, frames, corr, rms)
+	for side := range gotPower {
+		corr := dot[side] / math.Sqrt(gotPower[side]*wantPower[side])
+		rms := math.Sqrt(errorPower[side] / wantPower[side])
+		test.Logf("side %d: %d frames, correlation %.5f, normalized RMS error %.4f", side, frames, corr, rms)
 		if !(corr > .99 && rms < .15) {
-			t.Errorf("side %d differs from ffplay", side)
+			test.Errorf("side %d differs from ffplay", side)
 		}
 	}
 }
