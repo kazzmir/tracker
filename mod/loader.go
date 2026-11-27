@@ -37,6 +37,7 @@ type ModFile struct {
     Samples []Sample
     // length in orders
     SongLength int
+    amigaTempo bool // ProTracker writes CIA tempo on the second tick.
 }
 
 type Note struct {
@@ -109,6 +110,52 @@ func readByte(reader io.Reader) (byte, error) {
         return 0, err
     }
     return buf[0], nil
+}
+
+var modNotePeriods = [...]uint16{
+    3424, 3232, 3048, 2880, 2712, 2560, 2416, 2280, 2152, 2032, 1920, 1812,
+    1712, 1616, 1524, 1440, 1356, 1280, 1208, 1140, 1076, 1016, 960, 907,
+    856, 808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453,
+    428, 404, 381, 360, 339, 320, 302, 285, 269, 254, 240, 226,
+    214, 202, 190, 180, 170, 160, 151, 143, 135, 127, 120, 113,
+    107, 101, 95, 90, 85, 80, 75, 71, 67, 63, 60, 56,
+    53, 50, 47, 45, 42, 40, 37, 35, 33, 31, 30, 28,
+}
+
+// Finetune is a signed nibble used directly as the ProTracker table index.
+var modTunedOctave = [16][12]int{
+    {1712,1616,1524,1440,1356,1280,1208,1140,1076,1016,960,907},
+    {1700,1604,1514,1430,1348,1274,1202,1134,1070,1010,954,900},
+    {1688,1592,1504,1418,1340,1264,1194,1126,1064,1004,948,894},
+    {1676,1582,1492,1408,1330,1256,1184,1118,1056,996,940,888},
+    {1664,1570,1482,1398,1320,1246,1176,1110,1048,990,934,882},
+    {1652,1558,1472,1388,1310,1238,1168,1102,1040,982,926,874},
+    {1640,1548,1460,1378,1302,1228,1160,1094,1032,974,920,868},
+    {1628,1536,1450,1368,1292,1220,1150,1086,1026,968,914,862},
+    {1814,1712,1616,1524,1440,1356,1280,1208,1140,1076,1016,960},
+    {1800,1700,1604,1514,1430,1350,1272,1202,1134,1070,1010,954},
+    {1788,1688,1592,1504,1418,1340,1264,1194,1126,1064,1004,948},
+    {1774,1676,1582,1492,1408,1330,1256,1184,1118,1056,996,940},
+    {1762,1664,1570,1482,1398,1320,1246,1176,1110,1048,988,934},
+    {1750,1652,1558,1472,1388,1310,1238,1168,1102,1040,982,926},
+    {1736,1640,1548,1460,1378,1302,1228,1160,1094,1032,974,920},
+    {1724,1628,1536,1450,1368,1292,1220,1150,1086,1026,968,914},
+}
+
+// tunedMODPeriod returns a period in quarter-period units.
+func tunedMODPeriod(period uint16, fineTune byte) int {
+    if fineTune == 0 { return int(period) * 4 }
+    note := nearestMODNote(period)
+    return (modTunedOctave[fineTune&15][note%12] * 8) >> (note/12)
+}
+
+func nearestMODNote(period uint16) int {
+    for index := 1; index < len(modNotePeriods); index++ {
+        if int(period)*2 >= int(modNotePeriods[index-1])+int(modNotePeriods[index]) {
+            return index-1
+        }
+    }
+    return len(modNotePeriods)-1
 }
 
 func Load(reader_ io.Reader) (*ModFile, error) {
@@ -228,6 +275,12 @@ func Load(reader_ io.Reader) (*ModFile, error) {
     // a note is a sample to play, combined with an effect and pitch
     patternBytes := make([]byte, 4)
     var patterns []Pattern
+    amigaTempo := string(kind) == "M.K."
+    for _, sample := range samples {
+        if sample.LoopLength == 0 {
+            amigaTempo = false
+        }
+    }
     for i := range patternMax + 1 {
         log.Printf("Reading pattern %d", i)
 
@@ -242,6 +295,13 @@ func Load(reader_ io.Reader) (*ModFile, error) {
 
                 sampleNumber := (patternBytes[0] & 0xf0) + (patternBytes[2] >> 4)
                 periodFrequency := (uint(patternBytes[0] & 0xf) << 8) + uint(patternBytes[1])
+                if periodFrequency != 0 {
+                    // Pattern periods identify notes; some writers use slightly different tables.
+                    periodFrequency = uint(modNotePeriods[nearestMODNote(uint16(periodFrequency))])
+                    if periodFrequency < 113 || periodFrequency > 856 {
+                        amigaTempo = false
+                    }
+                }
                 effectNumber := patternBytes[2] & 0xf
                 effectParameter := patternBytes[3]
 
@@ -292,27 +352,10 @@ func Load(reader_ io.Reader) (*ModFile, error) {
         samples[i].Data = data
     }
 
-    /*
-    position, err = reader.Seek(0, io.SeekCurrent)
-    log.Printf("Position after sample data is now %v", position)
-
-    end, err := reader.Seek(0, io.SeekEnd)
-    log.Printf("End of file at %v", end)
-
-    if position != end {
-        log.Printf("  extra bytes!!")
-    }
-    */
-
-    rest, err := readByte(reader)
-    if err == nil {
-        return nil, fmt.Errorf("Extra data after samples: %v", rest)
-    }
-
-    // log.Printf("%v", samples[12].Data)
-    // log.Printf("Data length %v samples %v", len(samples[5].Data), samples[5].Length)
-
+    // The declared pattern and sample sizes delimit the module. Ignore
+    // trailing padding or tracker metadata rather than rejecting the file.
     return &ModFile{
+        amigaTempo: amigaTempo,
         SongLength: int(orderCount),
         Channels: channels,
         Patterns: patterns,

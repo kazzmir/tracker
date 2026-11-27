@@ -48,6 +48,7 @@ type Channel struct {
     ArpeggioTicks int
     delayedNote *Note
     delayTick int
+    loopRow, loopCount int
 
     VolumeCutTick int
 
@@ -66,7 +67,8 @@ type Channel struct {
     CurrentEffectParameter int
 
     startPosition float64
-    fineTune int8
+    fineTune byte
+    periodFraction, targetFraction int // quarter-period units
     looped bool
     mixVolume float32
     volumeStep float32
@@ -222,16 +224,11 @@ func (channel *Channel) UpdatePortamento(ticks int) {
     if channel.TonePortamentoTarget == 0 {
         return
     }
-    direction := 1
-    if channel.TonePortamentoTarget < channel.CurrentFrequency {
-        direction = -1
-    }
-    channel.CurrentFrequency += ticks * channel.TonePortamentoSpeed * direction
-    if direction == -1 && channel.CurrentFrequency < channel.TonePortamentoTarget {
-        channel.CurrentFrequency = channel.TonePortamentoTarget
-    } else if direction == 1 && channel.CurrentFrequency > channel.TonePortamentoTarget {
-        channel.CurrentFrequency = channel.TonePortamentoTarget
-    }
+    current := channel.CurrentFrequency*4 + channel.periodFraction
+    target := channel.TonePortamentoTarget*4 + channel.targetFraction
+    step := ticks * channel.TonePortamentoSpeed * 4
+    current += max(-step, min(step, target-current))
+    channel.CurrentFrequency, channel.periodFraction = current/4, current%4
 }
 
 func (channel *Channel) UpdateTick(tick int) {
@@ -341,7 +338,7 @@ func (channel *Channel) applyNote(note *Note) {
             }
             channel.CurrentSample = sample
             if sample != nil {
-                channel.fineTune = int8(sample.FineTune << 4) >> 4
+                channel.fineTune = sample.FineTune & 15
             }
         }
     }
@@ -349,12 +346,12 @@ func (channel *Channel) applyNote(note *Note) {
     newFrequency := channel.CurrentFrequency
     trigger := note.PeriodFrequency != 0 && (!tonePortamento || !playing)
     if note.PeriodFrequency != 0 {
-        period := int(note.PeriodFrequency)
+        period := tunedMODPeriod(note.PeriodFrequency, channel.fineTune)
         if tonePortamento {
-            channel.TonePortamentoTarget = period
+            channel.TonePortamentoTarget, channel.targetFraction = period / 4, period % 4
         }
         if trigger {
-            newFrequency = period
+            newFrequency, channel.periodFraction = period / 4, period % 4
             channel.startPosition = 0
             channel.looped = false
             channel.Vibrato.position = 0
@@ -371,7 +368,12 @@ func (channel *Channel) applyNote(note *Note) {
             if note.EffectParameter > 0 && note.EffectParameter <= 0x1f {
                 channel.Player.Speed = int(note.EffectParameter)
             } else if note.EffectParameter >= 0x20 && note.EffectParameter <= 0xff {
-                channel.Player.BPM = int(note.EffectParameter)
+                if channel.Player.ModFile.amigaTempo {
+                    channel.Player.pendingBPM = int(note.EffectParameter)
+                    break
+                } else {
+                    channel.Player.BPM = int(note.EffectParameter)
+                }
             }
 
             if channel.Player.OnChangeSpeed != nil {
@@ -441,6 +443,22 @@ func (channel *Channel) applyNote(note *Note) {
                     newFrequency = max(1, newFrequency - int(note.EffectParameter & 0xf))
                 case 2:
                     newFrequency += int(note.EffectParameter & 0xf)
+                case 6:
+                    count := int(note.EffectParameter & 15)
+                    if count == 0 {
+                        channel.loopRow = channel.Player.CurrentRow
+                    } else {
+                        if channel.loopCount == 0 {
+                            channel.loopCount = count
+                        } else {
+                            channel.loopCount--
+                        }
+                        if channel.loopCount > 0 {
+                            channel.Player.patternLoop = channel.loopRow
+                        }
+                    }
+                case 0xe:
+                    channel.Player.rowDelay = max(channel.Player.rowDelay, int(note.EffectParameter & 15))
                 case 0xa:
                     channel.Volume = min(channel.Volume + float32(note.EffectParameter & 0xf) / 64.0, 1.0)
                 case 0xb:
@@ -505,10 +523,7 @@ func (channel *Channel) render(samples int) {
     if channel.CurrentEffect == EffectVibrato || channel.CurrentEffect == EffectVibratoAndVolumeSlide {
         period = channel.Vibrato.Apply(period)
     }
-    increment := float64(palSampleClock) / (float64(max(1, period)) * float64(channel.Player.SampleRate))
-    if channel.fineTune != 0 {
-        increment *= math.Exp2(float64(channel.fineTune) / 96)
-    }
+    increment := float64(palSampleClock) / (max(1, float64(period) + float64(channel.periodFraction)/4) * float64(channel.Player.SampleRate))
     position := channel.startPosition
     for range samples {
         if channel.rampFrames > 0 {
@@ -568,6 +583,9 @@ type Player struct {
     frameRemainder float64
     jumpOrder int
     breakRow int
+    patternLoop int
+    rowDelay int
+    pendingBPM int
 }
 
 func MakePlayer(modfile *ModFile, sampleRate int) *Player {
@@ -578,6 +596,7 @@ func MakePlayer(modfile *ModFile, sampleRate int) *Player {
         BPM: 125,
         CurrentRow: 0,
         jumpOrder: -1,
+        patternLoop: -1,
     }
 
     for i := range modfile.Channels {
@@ -692,6 +711,8 @@ func (player *Player) SetOrder(order int) {
     player.framesLeft = 0
     player.jumpOrder = -1
     player.breakRow = 0
+    player.patternLoop, player.rowDelay, player.pendingBPM = -1, 0, 0
+    player.resetPatternLoops()
 
     if player.OnChangeOrder != nil {
         player.OnChangeOrder(player.CurrentOrder, player.GetPattern())
@@ -726,7 +747,19 @@ func (player *Player) GetChannelData(channel int, data []float32) int {
     return player.Channels[channel].ScopeBuffer.Peek(data)
 }
 
+func (player *Player) resetPatternLoops() {
+    for _, channel := range player.Channels {
+        channel.loopRow, channel.loopCount = 0, 0
+    }
+}
+
 func (player *Player) beginTick() {
+    if player.pendingBPM != 0 {
+        player.BPM, player.pendingBPM = player.pendingBPM, 0
+        if player.OnChangeSpeed != nil {
+            player.OnChangeSpeed(player.Speed, player.BPM)
+        }
+    }
     if player.tick == 0 {
         if player.OnChangeRow != nil {
             player.OnChangeRow(player.CurrentRow)
@@ -753,24 +786,30 @@ func (player *Player) renderFrames(frames int) {
         return
     }
     player.tick++
-    if player.tick < player.Speed {
+    if player.tick < player.Speed * (1 + player.rowDelay) {
         return
     }
     player.tick = 0
 
     oldOrder := player.CurrentOrder
+    player.rowDelay = 0
     if player.jumpOrder >= 0 {
+        player.resetPatternLoops()
         player.CurrentOrder = player.jumpOrder
         player.CurrentRow = player.breakRow
         player.jumpOrder = -1
         player.breakRow = 0
+    } else if player.patternLoop >= 0 {
+        player.CurrentRow = player.patternLoop
     } else {
         player.CurrentRow++
         if player.CurrentRow >= len(player.ModFile.Patterns[player.GetPattern()].Rows) {
+            player.resetPatternLoops()
             player.CurrentRow = 0
             player.CurrentOrder++
         }
     }
+    player.patternLoop = -1
     wrapped := player.CurrentOrder >= player.ModFile.SongLength
     if wrapped {
         player.CurrentOrder = 0
@@ -800,7 +839,12 @@ func (player *Player) Update(timeDelta float32) {
 func (player *Player) RenderToPCM() io.Reader {
     var buffer, mix []float32
     var pcm, pending []byte
-    seen := make(map[[2]int]bool)
+    type rowVisit struct {
+        order, row int
+        loops string
+    }
+    seen := make(map[rowVisit]bool)
+    loopState := make([]byte, len(player.Channels)*2)
     return &common.ReaderFunc{Func: func(data []byte) (int, error) {
         if len(data) == 0 {
             return 0, nil
@@ -808,7 +852,12 @@ func (player *Player) RenderToPCM() io.Reader {
         if len(pending) == 0 {
             if player.framesLeft == 0 {
                 if player.tick == 0 {
-                    row := [2]int{player.CurrentOrder, player.CurrentRow}
+                    // Revisiting a row with a different loop count is intentional.
+                    for index, channel := range player.Channels {
+                        loopState[index*2] = byte(channel.loopRow)
+                        loopState[index*2+1] = byte(channel.loopCount)
+                    }
+                    row := rowVisit{player.CurrentOrder, player.CurrentRow, string(loopState)}
                     if seen[row] || player.ModFile.SongLength == 0 {
                         return 0, io.EOF
                     }
