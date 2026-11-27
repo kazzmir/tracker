@@ -1,0 +1,42 @@
+package mod
+
+import (
+	"math"
+	"testing"
+)
+
+func TestNoteAndInstrumentAreIndependent(t *testing.T) {
+	p := MakePlayer(&ModFile{Channels: 1, Samples: []Sample{{Volume: 32, Data: make([]float32, 16)}}}, 48000)
+	ch := p.Channels[0]
+	ch.applyNote(&Note{SampleNumber: 1, PeriodFrequency: 428, EffectNumber: EffectSetVolume, EffectParameter: 64})
+	if ch.Volume != 1 {
+		t.Fatalf("C40 should override the sample's default volume, got %v", ch.Volume)
+	}
+	ch.startPosition = 7.25
+	ch.applyNote(&Note{SampleNumber: 1})
+	if ch.Volume != .5 || ch.startPosition != 7.25 {
+		t.Fatalf("instrument-only row: volume %v, position %v", ch.Volume, ch.startPosition)
+	}
+	ch.applyNote(&Note{PeriodFrequency: 320, EffectNumber: EffectTonePortamento, EffectParameter: 4})
+	ch.UpdateTick(1)
+	if ch.CurrentFrequency != 424 || ch.startPosition != 7.25 {
+		t.Fatalf("tone portamento: period %d, position %v", ch.CurrentFrequency, ch.startPosition)
+	}
+	ch.applyNote(&Note{PeriodFrequency: 320, EffectNumber: EffectExtra, EffectParameter: 0x11})
+	if ch.CurrentFrequency != 319 || ch.startPosition != 0 {
+		t.Fatalf("note-only row with fine slide: period %d, position %v", ch.CurrentFrequency, ch.startPosition)
+	}
+}
+
+func TestLoopKeepsFractionalPosition(t *testing.T) {
+	p := MakePlayer(&ModFile{Channels: 1}, 48000)
+	ch := p.Channels[0]
+	ch.CurrentSample = &Sample{LoopStart: 1, LoopLength: 2, Data: []float32{0, 0, 1, 2, 3, 4, 99}}
+	ch.CurrentFrequency = 240
+	ch.startPosition = 5.75
+	ch.render(1)
+	want := 2 + 5.75 + float64(palSampleClock)/(48000*240) - 6
+	if math.Abs(ch.startPosition-want) > 1e-12 {
+		t.Fatalf("loop position %v, want %v", ch.startPosition, want)
+	}
+}
