@@ -418,7 +418,12 @@ func main(){
     profile := flag.Bool("profile", false, "Enable profiling")
     wav := flag.String("wav", "", "Output wav file")
     cli := flag.Bool("cli", false, "Run in CLI mode without GUI")
+    rate := flag.Int("rate", 48000, "Playback and WAV sample rate in Hz")
     flag.Parse()
+    if *rate < 1000 || *rate > 384000 {
+        log.Printf("Sample rate must be between 1000 and 384000 Hz")
+        return
+    }
 
     if len(flag.Args()) == 0 && *wav != "" {
         log.Println("Usage: tracker [-wav <output-path>] <path to mod file>")
@@ -447,7 +452,7 @@ func main(){
     }()
     signal.Notify(signalChan, os.Interrupt)
 
-    sampleRate := 44100
+    sampleRate := *rate
 
     if len(flag.Args()) > 0 {
         path := flag.Args()[0]

@@ -84,7 +84,7 @@ type Pattern struct {
 type Sample struct {
     Name string
     Length uint16
-    FineTune byte // -128 to 127
+    FineTune byte // signed four-bit value in eighths of a semitone
     Volume byte // 0-64
     LoopStart int
     LoopLength int
@@ -275,16 +275,16 @@ func Load(reader_ io.Reader) (*ModFile, error) {
         }
 
         log.Printf("Sample %v length %v", i, samples[i].Length * 2)
-        data := make([]float32, 0, samples[i].Length * 2)
+        data := make([]float32, 0, int(samples[i].Length) * 2)
 
-        for range samples[i].Length * 2 {
+        for range cap(data) {
             value, err := readByte(reader)
             if err != nil {
                 return nil, err
             }
 
             // convert to float, -1/+1 range
-            floatValue := float32(int8(value)) / 128 * (float32(samples[i].Volume) / 64)
+            floatValue := float32(int8(value)) / 128
 
             data = append(data, floatValue)
         }
