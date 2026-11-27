@@ -8,13 +8,16 @@ import (
     "io"
     "sync"
     "bytes"
+    "errors"
     "io/fs"
+    "path/filepath"
     // for discard
     // "io/ioutil"
     "flag"
     "context"
     "runtime/pprof"
 
+    "github.com/kazzmir/tracker/it"
     "github.com/kazzmir/tracker/mod"
     "github.com/kazzmir/tracker/s3m"
     "github.com/kazzmir/tracker/xm"
@@ -103,7 +106,30 @@ func MakeEngine(player TrackerPlayer, audioContext *audio.Context, fps int, quit
     return engine, nil
 }
 
+func loadIT(filesystem fs.FS, path string, sampleRate int) (*it.Player, error) {
+    file, err := filesystem.Open(path)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+    module, err := it.Load(file)
+    if err != nil {
+        return nil, err
+    }
+    return it.MakePlayer(module, sampleRate), nil
+}
+
 func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
+    itPlayer, err := loadIT(filesystem, path, engine.AudioContext.SampleRate())
+    if err == nil {
+        engine.Initialize(itPlayer)
+        return
+    }
+    if !errors.Is(err, it.ErrNotIT) {
+        log.Printf("Could not load %v: %v", path, err)
+        return
+    }
+
     loadS3m := func() (TrackerPlayer, error) {
         file, err := filesystem.Open(path)
         if err != nil {
@@ -177,7 +203,7 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
     }
 
     if err != nil {
-        log.Printf("Not an s3m or mod file %v: %v", path, err)
+        log.Printf("Not a supported tracker file %v: %v", path, err)
         return
     }
 
@@ -360,6 +386,14 @@ func tryLoadXM(path string) (*xm.XMFile, error) {
 }
 
 func TryLoad(path string, sampleRate int) (TrackerPlayer, error) {
+    // Open via an fs.FS so desktop paths and dropped files use the same IT loader.
+    itPlayer, err := loadIT(os.DirFS(filepath.Dir(path)), filepath.Base(path), sampleRate)
+    if err == nil {
+        return itPlayer, nil
+    }
+    if !errors.Is(err, it.ErrNotIT) {
+        return nil, err
+    }
     s3mFile, err := tryLoadS3m(path)
     if err == nil {
         return s3m.MakePlayer(s3mFile, sampleRate), nil

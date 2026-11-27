@@ -73,7 +73,7 @@ func decompress(data []byte, dst []float32, bits int, it215 bool) ([]byte, error
 					change = v - low
 				}
 			case width == maxWidth && v&top != 0:
-				width = (v & 255) + 1
+				width = (v &^ top) + 1
 				continue
 			}
 			if change >= 0 {
