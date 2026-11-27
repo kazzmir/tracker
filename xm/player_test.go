@@ -94,6 +94,10 @@ func TestT1XMAgainstFFplay(t *testing.T) {
 		{filepath.Join("FastTracker II", "Alchase.xm"), 9115200},
 		{filepath.Join("FastTracker II", "Interpolative.xm"), 9127552},
 		{filepath.Join("FastTracker II", "Sigmentens Avund.xm"), 9761808},
+		// Skale and MadTracker use a different stereo panning law.
+		{filepath.Join("FastTracker II", "Things We Need.xm"), 1974528},
+		{filepath.Join("FastTracker II", "Into The Blu.xm"), 7372800},
+		{filepath.Join("FastTracker II", "Treetops.xm"), 6637518},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {

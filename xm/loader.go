@@ -18,6 +18,7 @@ type XMFile struct {
     BPM uint16 // beats per minute
     Tempo uint16 // tempo in ticks per beat
     LinearPeriods bool
+    linearPanning bool
 }
 
 func (file *XMFile) GetPattern(order int) *Pattern {
@@ -503,6 +504,9 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*XMFile, error) {
         BPM: bpm,
         Tempo: tempo,
         LinearPeriods: flags & 1 != 0,
+        // These writers use linear stereo gains rather than FT2's square-root panning.
+        linearPanning: bytes.Equal(trackerName, []byte("Skale Tracker")) || bytes.Equal(trackerName, []byte("Sk@le Tracker")) ||
+            bytes.HasPrefix(trackerName, []byte("MadTracker 2.0\x00")) || bytes.Equal(trackerName, []byte("MadTracker 2.0")),
     }, nil
 }
 

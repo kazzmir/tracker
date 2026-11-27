@@ -392,9 +392,12 @@ func (c *Channel) updateTick(tick int) {
 	vol = max(0, min(64, vol)) / 64 * inst.VolumeEnvelope.value(c.volumeTick, 64) / 64 * float64(c.fade) / 65536 * float64(c.player.GlobalVolume) / 64
 	pan := float64(c.pan) + (inst.PanEnvelope.value(c.panTick, 32)-32)*(128-math.Abs(float64(c.pan)-128))/32
 	pan = max(0, min(255, pan)) / 256
-	// OpenMPT's FT2 mix uses equal-power panning and headroom for the channel sum.
-	const gain = 3.0 / 8
-	c.targetLeft, c.targetRight = float32(vol*math.Sqrt(1-pan)*gain), float32(vol*math.Sqrt(pan)*gain)
+	left, right := 1-pan, pan
+	if !c.player.XMFile.linearPanning {
+		left, right = math.Sqrt(left), math.Sqrt(right)
+	}
+	const gain = 3.0 / 8 // headroom for the channel sum
+	c.targetLeft, c.targetRight = float32(vol*left*gain), float32(vol*right*gain)
 	if c.targetLeft != c.left || c.targetRight != c.right {
 		c.ramp = max(1, c.player.SampleRate/200)
 	}
