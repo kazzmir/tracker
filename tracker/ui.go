@@ -36,6 +36,7 @@ type UIHooks struct {
     LoadSong func()
     Pause func()
     RenderScopes func()
+    UpdateSpectrum func(active bool, gain, elapsed float64)
     ToggleOscilloscopes func()
     ToggleMainView func()
 }
@@ -912,6 +913,30 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
 
     topContainer.AddChild(moreInfoAnchor)
 
+    var updateSpectrum func(bool, float64, float64)
+    drawSpectrum := func() {}
+    if source, ok := player.(spectrumSource); ok {
+        rate := system.GetSampleRate()
+        spectrum := newSpectrum(rate)
+        image := ebiten.NewImage(spectrumWidth, spectrumHeight)
+        panel := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewRowLayout(
+            widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+        )))
+        low := spectrum.edges[0] * rate / spectrumSize
+        high := float64(spectrum.edges[spectrumBars] * rate) / spectrumSize / 1000
+        label := fmt.Sprintf("Frequency spectrum  ·  %d Hz – %.0f kHz", low, high)
+        panel.AddChild(widget.NewText(widget.TextOpts.Text(label, &face, color.White)))
+        panel.AddChild(widget.NewGraphic(widget.GraphicOpts.Image(image)))
+        rootContainer.AddChild(panel)
+        updateSpectrum = func(active bool, gain, elapsed float64) {
+            if active {
+                spectrum.update(source, gain, elapsed)
+            } else {
+                spectrum.update(nil, 0, elapsed)
+            }
+        }
+        drawSpectrum = func() { spectrum.draw(image) }
+    }
     rootContainer.AddChild(oscilloscopes)
 
     mainView := widget.NewContainer(
@@ -972,7 +997,9 @@ func makeUI(player UIPlayer, system SystemInterface) (*ebitenui.UI, UIHooks) {
         },
         RenderScopes: func() {
             updateScopes()
+            drawSpectrum()
         },
+        UpdateSpectrum: updateSpectrum,
         ToggleMainView: changeMainView,
     }
 

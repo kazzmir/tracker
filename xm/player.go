@@ -273,6 +273,14 @@ func (p *Player) GetChannelData(i int, dst []float32) int {
 	}
 	return p.Channels[i].ScopeBuffer.Peek(dst)
 }
+// GetSpectrumChannel copies recent, unmuted output as stereo sample pairs.
+func (p *Player) GetSpectrumChannel(index int, dst []float32) int {
+	if index < 0 || index >= len(p.Channels) || p.Channels[index].Mute {
+		return 0
+	}
+	return p.Channels[index].ScopeBuffer.PeekLatest(dst[:len(dst)&^1])
+}
+
 func (p *Player) ResetRow() {
 	p.CurrentRow = 0
 	p.tick = 0

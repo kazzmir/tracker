@@ -120,6 +120,21 @@ func (buffer *AudioBuffer) Peek(data []float32) int {
     return copied
 }
 
+// PeekLatest copies the newest samples in chronological order, without consuming them.
+func (buffer *AudioBuffer) PeekLatest(data []float32) int {
+    buffer.lock.Lock()
+    defer buffer.lock.Unlock()
+
+    count := min(len(data), buffer.count)
+    if count == 0 {
+        return 0
+    }
+    start := (buffer.end + len(buffer.Buffer) - count) % len(buffer.Buffer)
+    first := copy(data[:count], buffer.Buffer[start:])
+    copy(data[first:count], buffer.Buffer[:count-first])
+    return count
+}
+
 func (buffer *AudioBuffer) UnsafeWrite(value float32) {
     if buffer.count < len(buffer.Buffer) {
         buffer.count += 1
