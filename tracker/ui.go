@@ -90,6 +90,7 @@ type UIPlayer interface {
     GetSpeed() int
     GetBPM() int
     GetChannelCount() int
+    GetPatternRowCount() int
     GetRowNoteInfo(channel int, row int) (common.NoteInfo, bool)
     GetChannelData(channel int, data []float32) int
     ToggleMuteChannel(channel int) bool
@@ -201,41 +202,52 @@ func makeChannelView(player UIPlayer, face *text.Face) (UIHooks, *widget.Contain
         )),
     )
 
+    const rowSpacing = 2
+    const trailingRows = 10
+    const viewportHeight = 650
+
     rowNumbers := widget.NewContainer(
         widget.ContainerOpts.Layout(widget.NewRowLayout(
             widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-            widget.RowLayoutOpts.Spacing(2),
+            widget.RowLayoutOpts.Spacing(rowSpacing),
         )),
     )
 
     var rowContainers [][]*widget.Container
+    currentRowHighlight := -1
+    var rowHeight int
 
-    for i := range 64 {
-        textColor := color.RGBA{R: 255, G: 255, B: 255, A: 255}
-        if (i + 1) % 4 == 0 {
-            textColor = color.RGBA{R: 200, G: 200, B: 0, A: 255}
-        }
-
+    makeRow := func(label string, textColor color.Color) *widget.Container {
         container := widget.NewContainer(
             widget.ContainerOpts.Layout(widget.NewRowLayout(
                 widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                widget.RowLayoutOpts.Spacing(2),
             )),
         )
-
-        rowContainers = append(rowContainers, []*widget.Container{container})
-
         container.AddChild(widget.NewText(
-            widget.TextOpts.Text(fmt.Sprintf("%02X", i), face, textColor),
+            widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
+            widget.TextOpts.Text(label, face, textColor),
         ))
-
-        rowNumbers.AddChild(container)
+        return container
     }
 
-    for range 32 {
-        rowNumbers.AddChild(widget.NewText(
-            widget.TextOpts.Text("-", face, color.White),
-        ))
+    setupRowNumbers := func(rowCount int) {
+        rowNumbers.RemoveChildren()
+        rowContainers = make([][]*widget.Container, rowCount)
+        currentRowHighlight = -1
+        for i := range rowCount {
+            textColor := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+            if (i + 1) % 4 == 0 {
+                textColor = color.RGBA{R: 200, G: 200, B: 0, A: 255}
+            }
+
+            container := makeRow(fmt.Sprintf("%02X", i), textColor)
+            rowContainers[i] = []*widget.Container{container}
+            rowNumbers.AddChild(container)
+            _, rowHeight = container.PreferredSize()
+        }
+        for range trailingRows {
+            rowNumbers.AddChild(makeRow("-", color.White))
+        }
     }
 
     makeRowScroller := func(content *widget.Container) *widget.ScrollContainer {
@@ -246,7 +258,7 @@ func makeChannelView(player UIPlayer, face *text.Face) (UIHooks, *widget.Contain
                 widget.WidgetOpts.LayoutData(widget.RowLayoutData{
                     // FIXME: use a grid layout to automatically stretch the container
                     // row layout doesn't seem to stretch the container to the viewable area
-                    MaxHeight: 650,
+                    MaxHeight: viewportHeight,
                 }),
             ),
             widget.ScrollContainerOpts.Image(&widget.ScrollContainerImage{
@@ -259,7 +271,6 @@ func makeChannelView(player UIPlayer, face *text.Face) (UIHooks, *widget.Contain
     var scrollers []*widget.ScrollContainer
 
     rowNumberScroller := makeRowScroller(rowNumbers)
-    // rootContainer.AddChild(rowNumberScroller)
     scrollers = append(scrollers, rowNumberScroller)
 
     extraContainer := widget.NewContainer(
@@ -275,8 +286,6 @@ func makeChannelView(player UIPlayer, face *text.Face) (UIHooks, *widget.Contain
     extraContainer.AddChild(rowNumberScroller)
 
     channels.AddChild(extraContainer)
-
-    var removeChannels []widget.RemoveChildFunc
 
     var channelColumn []*widget.Container
     for i := range player.GetChannelCount() {
@@ -325,7 +334,7 @@ func makeChannelView(player UIPlayer, face *text.Face) (UIHooks, *widget.Contain
         data := widget.NewContainer(
             widget.ContainerOpts.Layout(widget.NewRowLayout(
                 widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                widget.RowLayoutOpts.Spacing(2),
+                widget.RowLayoutOpts.Spacing(rowSpacing),
             )),
             widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(background)),
         )
@@ -339,120 +348,54 @@ func makeChannelView(player UIPlayer, face *text.Face) (UIHooks, *widget.Contain
         channels.AddChild(column)
     }
 
-    setupChannels := func(){
-        for _, remove := range removeChannels {
-            remove()
-        }
-
-        removeChannels = nil
-
-        for row := range 64 {
-            rowContainers[row] = rowContainers[row][1:]
-        }
-
-        for i := range player.GetChannelCount() {
-            container := channelColumn[i]
-
-            for row := range 64 {
-                note, ok := player.GetRowNoteInfo(i, row)
-                if !ok {
-                    continue
+    setupChannels := func() {
+        count := player.GetPatternRowCount()
+        setupRowNumbers(count)
+        for index, column := range channelColumn {
+            column.RemoveChildren()
+            for row := range count {
+                label := "... .. ..."
+                if note, ok := player.GetRowNoteInfo(index, row); ok {
+                    name := note.GetName()
+                    if name == "" {
+                        name = "..."
+                    }
+                    label = fmt.Sprintf("%s %s %s", name, note.GetSampleName(), note.GetEffectName())
                 }
-
-                noteName := note.GetName()
-                if noteName == "" {
-                    noteName = "..."
-                }
-                /*
-                if note.PeriodFrequency > 0 {
-                    noteName = fmt.Sprintf("%v", mod.ConvertToNote(note.PeriodFrequency))
-                    // noteList.AddEntry(name)
-                }
-                */
-
-                sampleName := note.GetSampleName()
-                /*
-                if note.SampleNumber > 0 {
-                    sampleName = fmt.Sprintf("%02X", note.SampleNumber)
-                }
-                */
-
-                // effectName := "..."
-                effectName := note.GetEffectName()
-                /*
-                if note.EffectNumber > 0 || note.EffectParameter > 0 {
-                    effectName = fmt.Sprintf("%X%02X", note.EffectNumber, note.EffectParameter)
-                }
-                */
-
-                textContainer := widget.NewContainer(
-                    widget.ContainerOpts.Layout(widget.NewRowLayout(
-                        widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                        widget.RowLayoutOpts.Spacing(2),
-                    )),
-                )
-
-                textContainer.AddChild(widget.NewText(
-                    widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
-                    widget.TextOpts.Text(fmt.Sprintf("%v %v %v", noteName, sampleName, effectName), face, color.White),
-                ))
-
-                rowContainers[row] = append(rowContainers[row], textContainer)
-                removeChannels = append(removeChannels, container.AddChild(textContainer))
+                cell := makeRow(label, color.White)
+                rowContainers[row] = append(rowContainers[row], cell)
+                column.AddChild(cell)
             }
-
-            for range 32 {
-                textContainer := widget.NewContainer(
-                    widget.ContainerOpts.Layout(widget.NewRowLayout(
-                        widget.RowLayoutOpts.Direction(widget.DirectionVertical),
-                        widget.RowLayoutOpts.Spacing(2),
-                    )),
-                )
-
-                textContainer.AddChild(widget.NewText(
-                    widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionCenter),
-                    widget.TextOpts.Text("-", face, color.White),
-                ))
-
-                removeChannels = append(removeChannels, container.AddChild(textContainer))
+            for range trailingRows {
+                column.AddChild(makeRow("-", color.White))
             }
+        }
+        for _, scroller := range scrollers {
+            scroller.ScrollTop = 0
         }
     }
 
     setupChannels()
-
-    /*
-    container := widget.NewContainer(
-        widget.ContainerOpts.Layout(widget.NewRowLayout(
-            widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
-            widget.RowLayoutOpts.Spacing(2),
-            // widget.RowLayoutOpts.Padding(widget.Insets{Top: 0, Bottom: 0}),
-        )),
-        widget.ContainerOpts.BackgroundImage(ui_image.NewNineSliceColor(color.NRGBA{R: 32, G: 32, B: 32, A: 255})),
-    )
-
-    // container.AddChild(rowNumbers)
-    container.AddChild(channels)
-    */
-
-    currentRowHighlight := 0
+    _, contentHeight := rowNumbers.PreferredSize()
 
     uiHooks := UIHooks{
         UpdateRow: func(row int) {
-            if row < len(rowContainers) {
-                top := row - 10
-                if top < 0 {
-                    top = 0
-                }
-                position := float64(top) / (64 + 10)
-
+            if row >= 0 && row < len(rowContainers) {
+                pitch := rowHeight + rowSpacing
                 for _, scroller := range scrollers {
-                    scroller.ScrollTop = position
+                    height := scroller.ViewRect().Dy()
+                    if height <= 0 {
+                        height = viewportHeight
+                    }
+                    scrollable := max(1, contentHeight-height)
+                    top := max(0, row-max(0, height/pitch/2)) * pitch
+                    scroller.ScrollTop = min(1, float64(top)/float64(scrollable))
                 }
-                // log.Printf("Set scroll top to %v", rowScroll.ScrollTop)
 
-                for _, container := range rowContainers[currentRowHighlight] {
-                    container.SetBackgroundImage(nil)
+                if currentRowHighlight >= 0 {
+                    for _, container := range rowContainers[currentRowHighlight] {
+                        container.SetBackgroundImage(nil)
+                    }
                 }
                 currentRowHighlight = row
                 for _, container := range rowContainers[row] {
@@ -462,6 +405,7 @@ func makeChannelView(player UIPlayer, face *text.Face) (UIHooks, *widget.Contain
         },
         UpdateOrder: func(order int, pattern int) {
             setupChannels()
+            _, contentHeight = rowNumbers.PreferredSize()
         },
     }
 
