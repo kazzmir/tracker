@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -72,16 +73,7 @@ func TestDelayedNoteVolume(t *testing.T) {
 	}
 }
 
-func TestSong2AgainstFFplay(t *testing.T) {
-	const path = "../t1/song2.xm"
-	f, err := os.Open(path)
-	if os.IsNotExist(err) {
-		t.Skip("local song2.xm fixture not available")
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
+func TestT1XMAgainstFFplay(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		t.Skip("FFmpeg not installed")
@@ -89,6 +81,33 @@ func TestSong2AgainstFFplay(t *testing.T) {
 	if out, err := exec.Command(ffmpeg, "-hide_banner", "-h", "demuxer=libopenmpt").CombinedOutput(); err != nil || !bytes.Contains(out, []byte("Demuxer libopenmpt")) {
 		t.Skip("FFmpeg has no libopenmpt demuxer")
 	}
+	fixtures := []struct {
+		name   string
+		frames int
+	}{
+		{"song1.xm", 6981120},
+		{"song2.xm", 12752160},
+		{"song3.xm", 8914688},
+		{"song4.xm", 11519040},
+		{"song5.xm", 14378496},
+	}
+	for _, fixture := range fixtures {
+		t.Run(fixture.name, func(t *testing.T) {
+			compareWithFFplay(t, ffmpeg, filepath.Join("..", "t1", fixture.name), fixture.frames)
+		})
+	}
+}
+
+func compareWithFFplay(t *testing.T, ffmpeg, path string, wantFrames int) {
+	t.Helper()
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		t.Skip("local XM fixture not available")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
 	module, err := Load(f, log.New(io.Discard, "", 0))
 	if err != nil {
 		t.Fatal(err)
@@ -137,9 +156,11 @@ func TestSong2AgainstFFplay(t *testing.T) {
 			xy[ch] += x * y
 		}
 	}
+	// libopenmpt may append a 100 ms terminal fade. The musical
+	// part must have exactly the expected number of frames.
 	const maxTail = rate / 10 * 8
 	tail, err := io.Copy(io.Discard, io.LimitReader(ref, maxTail+1))
-	if err != nil || tail > maxTail || frames != 12752160 {
+	if err != nil || tail > maxTail || frames != wantFrames {
 		t.Fatalf("duration mismatch: %d frames, %d reference tail bytes, %v", frames, tail, err)
 	}
 	if err := cmd.Wait(); err != nil {
@@ -149,7 +170,7 @@ func TestSong2AgainstFFplay(t *testing.T) {
 		correlation := xy[ch] / math.Sqrt(xx[ch]*yy[ch])
 		rms := math.Sqrt((xx[ch] + yy[ch] - 2*xy[ch]) / yy[ch])
 		t.Logf("channel %d: %d frames, correlation %.5f, normalized RMS error %.4f", ch, frames, correlation, rms)
-		if !(correlation > .985 && rms < .17) {
+		if !(correlation > .99 && rms < .15) {
 			t.Errorf("channel %d differs from ffplay", ch)
 		}
 	}
