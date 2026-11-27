@@ -46,6 +46,11 @@ type Instrument struct {
     LoopEnd int
     Data []float32
     RightData []float32 // nil for mono samples
+    OPL *OPLPatch // non-nil for a melodic AdLib instrument
+}
+
+func (instrument *Instrument) playable() bool {
+    return instrument != nil && (instrument.OPL != nil || len(instrument.Data) > 0)
 }
 
 type Note struct {
@@ -273,8 +278,8 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
 
     channelCount := 0
     for i, setting := range channelSettings {
-        logger.Printf("Channel %v setting: %v", i, setting < 16)
-        if setting < 16 {
+        logger.Printf("Channel %v setting: %v", i, setting)
+        if setting < 25 {
             channelMap[i] = channelCount
 
             channelCount += 1
@@ -282,7 +287,7 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
             logger.Printf("Channel %v default panning %v", i, setting)
 
             pan := 128
-            if masterVolume & 128 != 0 {
+            if setting < 16 && masterVolume & 128 != 0 {
                 pan = 51
                 if setting & 8 != 0 {
                     pan = 204
@@ -375,7 +380,24 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
         }
 
         // 1 is digital sample
-        if type_ == 1 {
+        if type_ == 2 {
+            // SCRI stores the OPL operator registers at offsets 16–27.
+            var header [67]byte
+            if _, err := io.ReadFull(buffer, header[:]); err != nil {
+                return nil, err
+            }
+            if string(header[63:]) != "SCRI" {
+                return nil, fmt.Errorf("invalid S3M AdLib instrument signature")
+            }
+            patch := new(OPLPatch)
+            copy(patch[:], header[3:15])
+            instruments = append(instruments, Instrument{
+                Name: string(bytes.TrimRight(header[35:63], "\x00")),
+                MiddleC: binary.LittleEndian.Uint32(header[19:23]),
+                Volume: min(64, header[15]),
+                OPL: patch,
+            })
+        } else if type_ == 1 {
             // read a 3 byte unsigned value
             var high uint8
             var low uint16
