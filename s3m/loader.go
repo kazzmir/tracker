@@ -30,6 +30,7 @@ const (
     EffectSetTempo = 20
     EffectFineVibrato = 21
     EffectGlobalVolume = 22
+    EffectGlobalVolumeSlide = 23
 
     // not a defined effect in the s3m standard, but we use it for the extra delayed note effect
     EffectNoteDelay = 5000
@@ -131,6 +132,8 @@ type S3MFile struct {
     FastVolumeSlides bool
     OldVibrato bool
     AmigaLimits bool
+    impulseTracker bool
+    separateEffectMemory bool
 }
 
 func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
@@ -358,6 +361,7 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
     logger.Printf("Mono: %v", mono)
 
     var instruments []Instrument
+    usesGUS := false
 
     for _, offset := range instrumentOffsets {
         _, err := reader_.Seek(int64(offset) << 4, io.SeekStart)
@@ -458,10 +462,13 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
                 return nil, err
             }
 
-            _, err = buffer.Discard(12)
-            if err != nil {
+            var driverData [12]byte
+            if _, err := io.ReadFull(buffer, driverData[:]); err != nil {
                 return nil, err
             }
+            // ST3's Sound Blaster driver writes only 0 or 1 here; the GUS
+            // driver stores the sample's address in its own memory.
+            usesGUS = usesGUS || binary.LittleEndian.Uint16(driverData[4:]) > 1
 
             var sampleName [28]byte
             _, err = io.ReadFull(buffer, sampleName[:])
@@ -677,6 +684,9 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
     if mono {
         mixVolume = (mixVolume*8 + 5)/11
     }
+    if trackerVersion & 0xf000 == 0x1000 && usesGUS {
+        mixVolume = 48 // ST3's GUS driver ignores the header's master volume.
+    }
     if globalVolume == 0 && trackerVersion < 0x1320 {
         globalVolume = 64
     }
@@ -695,5 +705,7 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
         FastVolumeSlides: trackerVersion == 0x1300 || flags & 0x40 != 0,
         OldVibrato: flags & 1 != 0,
         AmigaLimits: flags & 0x10 != 0,
+        impulseTracker: trackerVersion & 0xf000 == 0x3000,
+        separateEffectMemory: trackerVersion & 0xf000 == 0x3000 || trackerVersion & 0xf000 == 0x4000,
     }, nil
 }
