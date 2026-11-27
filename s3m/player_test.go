@@ -90,6 +90,42 @@ func TestTempoAndGlobalVolumeSlides(t *testing.T) {
 	}
 }
 
+func TestSampleOffsetReplacesPreviousOffsetAndWraps(t *testing.T) {
+	file := &S3MFile{ChannelMap: map[int]int{0: 0}, Instruments: []Instrument{{Data: make([]float32, 1024), Loop: true, LoopBegin: 100, LoopEnd: 700}}}
+	track := &MakePlayer(file, 48000).channels[0]
+	for _, row := range []struct {
+		note     Note
+		position float64
+	}{
+		{Note{ChangeNote: true, Note: 0x40, ChangeSample: true, SampleNumber: 1, ChangeEffect: true, EffectNumber: EffectSampleOffset, EffectParameter: 1}, 256},
+		{Note{ChangeNote: true, Note: 0x40, ChangeEffect: true, EffectNumber: EffectSampleOffset, EffectParameter: 2}, 512},
+		{Note{ChangeNote: true, Note: 0x40}, 512},
+		{Note{ChangeNote: true, Note: 0x40, ChangeEffect: true, EffectNumber: EffectSampleOffset, EffectParameter: 3}, 168},
+	} {
+		track.beginRow(row.note)
+		track.updateTick(0)
+		if track.position != row.position {
+			t.Fatalf("sample position = %g, want %g", track.position, row.position)
+		}
+	}
+}
+
+func TestGUSPortamentoKeepsPlayingSample(t *testing.T) {
+	file := &S3MFile{ChannelMap: map[int]int{0: 0}, screamTrackerGUS: true, Instruments: []Instrument{
+		{Data: make([]float32, 32), MiddleC: 8363},
+		{Data: make([]float32, 32), MiddleC: 16726},
+	}}
+	track := &MakePlayer(file, 48000).channels[0]
+	track.beginRow(Note{ChangeNote: true, Note: 0x40, ChangeSample: true, SampleNumber: 1})
+	track.updateTick(0)
+	track.position = 12
+	track.beginRow(Note{ChangeNote: true, Note: 0x40, ChangeSample: true, SampleNumber: 2, ChangeEffect: true, EffectNumber: EffectPortamentoToNote, EffectParameter: 1})
+	track.updateTick(0)
+	if track.voice != &file.Instruments[0] || track.position != 12 || track.target != 856 {
+		t.Fatalf("GUS portamento changed playing sample or used wrong tuning: position %g, target %d", track.position, track.target)
+	}
+}
+
 func TestScreamTrackerCollectionAgainstFFplay(t *testing.T) {
 	for _, fixture := range []struct {
 		name                  string
@@ -99,8 +135,8 @@ func TestScreamTrackerCollectionAgainstFFplay(t *testing.T) {
 		{"Spummie Toy", 10400256, .99, .15},
 		{"Time For Tennis", 10293882, .99, .15},
 		{"Private Territory", 14128687, .98, .20},
-		{"Through The Void", 9569280, .98, .20},
-		{"Fort Genezis", 12950386, .98, .20},
+		{"Through The Void", 9569280, .995, .15},
+		{"Fort Genezis", 12950386, .995, .15},
 		{"Unicorn Magic", 9319104, .98, .20},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {

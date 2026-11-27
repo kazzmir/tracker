@@ -134,6 +134,7 @@ type S3MFile struct {
     AmigaLimits bool
     impulseTracker bool
     separateEffectMemory bool
+    screamTrackerGUS bool
 }
 
 func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
@@ -684,7 +685,8 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
     if mono {
         mixVolume = (mixVolume*8 + 5)/11
     }
-    if trackerVersion & 0xf000 == 0x1000 && usesGUS {
+    screamTrackerGUS := trackerVersion & 0xf000 == 0x1000 && usesGUS
+    if screamTrackerGUS {
         mixVolume = 48 // ST3's GUS driver ignores the header's master volume.
     }
     if globalVolume == 0 && trackerVersion < 0x1320 {
@@ -707,5 +709,6 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
         AmigaLimits: flags & 0x10 != 0,
         impulseTracker: trackerVersion & 0xf000 == 0x3000,
         separateEffectMemory: trackerVersion & 0xf000 == 0x3000 || trackerVersion & 0xf000 == 0x4000,
+        screamTrackerGUS: screamTrackerGUS,
     }, nil
 }

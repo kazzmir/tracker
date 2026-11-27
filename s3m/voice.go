@@ -48,6 +48,13 @@ func notePeriod(note int, instrument *Instrument, useHz bool) int {
 	return int((int64(periods[note&15]) * 8363 * 16) / (int64(c4) << uint(note>>4)))
 }
 
+func (track *channel) samplePlaying() bool {
+	if track.voice == nil {
+		return false
+	}
+	return track.voice.OPL != nil || track.position < float64(len(track.voice.Data))
+}
+
 func (track *channel) trigger(portamento bool) {
 	note := track.note
 	if note.ChangeSample {
@@ -67,10 +74,13 @@ func (track *channel) trigger(portamento bool) {
 		if period > 0 {
 			if portamento && track.period > 0 && track.voice != nil {
 				track.target = period
-				if track.player.S3M.impulseTracker && instrument != track.voice && instrument.playable() {
-					track.position = 0
-				}
-				if instrument.playable() {
+				playing := track.samplePlaying()
+				// GUS keeps the playing sample but takes the slide target from
+				// the new instrument's tuning. A finished sample can be replaced.
+				if instrument.playable() && (!track.player.S3M.screamTrackerGUS || !playing) {
+					if track.voice != instrument && (track.player.S3M.impulseTracker || !playing) {
+						track.position = 0
+					}
 					track.voice = instrument
 				}
 			} else {
@@ -95,9 +105,16 @@ func (track *channel) trigger(portamento bool) {
 						track.previousOffset = 0
 					}
 					if note.EffectNumber == EffectSampleOffset {
-						track.previousOffset += track.offset * 256
+						// Recall the last absolute offset on instrument-less notes.
+						track.previousOffset = track.offset * 256
 					}
 					track.position = float64(track.previousOffset)
+				}
+				if instrument != nil && instrument.Loop {
+					start, end := instrument.LoopBegin, min(instrument.LoopEnd, len(instrument.Data))
+					if end-start > 1 && track.position >= float64(end) {
+						track.position = float64(start) + math.Mod(track.position-float64(start), float64(end-start))
+					}
 				}
 			}
 		}
