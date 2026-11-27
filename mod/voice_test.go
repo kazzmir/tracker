@@ -8,6 +8,29 @@ import (
 	"testing"
 )
 
+func TestArpeggioDoesNotChangeBasePeriod(t *testing.T) {
+	player := MakePlayer(&ModFile{
+		Channels: 1, SongLength: 1, Orders: []byte{0},
+		Patterns: []Pattern{{Rows: []Row{{Notes: []Note{{}}}}}},
+	}, 48000)
+	channel := player.Channels[0]
+	channel.applyNote(&Note{PeriodFrequency: 428, EffectNumber: EffectArpeggio, EffectParameter: 0x40})
+	for tick, want := range []int{428, 339, 428} {
+		channel.UpdateTick(tick)
+		if got := channel.arpeggioPeriod(channel.CurrentFrequency * 4); got != want*4 {
+			t.Fatalf("tick %d pitch = %g, want %d", tick, float64(got)/4, want)
+		}
+		if channel.CurrentFrequency != 428 {
+			t.Fatalf("tick %d changed base period to %d", tick, channel.CurrentFrequency)
+		}
+	}
+	channel.UpdateTick(1)
+	channel.UpdateRow()
+	if got := channel.arpeggioPeriod(channel.CurrentFrequency * 4); got != 428*4 {
+		t.Fatalf("arpeggio persists after the effect ends: period %g", float64(got)/4)
+	}
+}
+
 func TestNoteAndInstrumentAreIndependent(t *testing.T) {
 	p := MakePlayer(&ModFile{Channels: 1, Samples: []Sample{{Volume: 32, Data: make([]float32, 16)}}}, 48000)
 	ch := p.Channels[0]

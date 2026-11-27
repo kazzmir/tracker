@@ -15,10 +15,22 @@ import (
 )
 
 func TestIntroAgainstFFplay(t *testing.T) {
-	path := filepath.Join("..", "t1", "intro.mod")
+	compareMODWithFFplay(t, filepath.Join("..", "t1", "intro.mod"), true)
+}
+
+func TestProTrackerCollectionAgainstFFplay(t *testing.T) {
+	for _, song := range []string{"Azzura", "Safe Sex. Comp", "Lady Madonna", "P.F.D. Guitars", "Network South East 34", "Anthem Of Techno"} {
+		t.Run(song, func(t *testing.T) {
+			compareMODWithFFplay(t, filepath.Join("..", "t1", "ProTracker", song+".mod"), false)
+		})
+	}
+}
+
+func compareMODWithFFplay(t *testing.T, path string, silentTail bool) {
+	t.Helper()
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
-		t.Skip("local t1/intro.mod fixture not available")
+		t.Skipf("local fixture %s not available", path)
 	}
 	if err != nil {
 		t.Fatal(err)
@@ -88,8 +100,7 @@ func TestIntroAgainstFFplay(t *testing.T) {
 		frames += n / frameBytes
 	}
 
-	// OpenMPT may append a short end fade. For this module the extra frames
-	// are silent, and must not hide a missing part of the performance.
+	// OpenMPT may append a short end fade.
 	maxTail := rate * frameBytes / 10
 	tail, err := io.ReadAll(io.LimitReader(ref, int64(maxTail+1)))
 	if err != nil || len(tail) > maxTail || len(tail)%frameBytes != 0 {
@@ -98,9 +109,11 @@ func TestIntroAgainstFFplay(t *testing.T) {
 	if err := cmd.Wait(); err != nil {
 		t.Fatalf("FFmpeg: %v: %s", err, stderr.String())
 	}
-	for i := 0; i < len(tail); i += 4 {
-		if sample := math.Float32frombits(binary.LittleEndian.Uint32(tail[i:])); !(math.Abs(float64(sample)) < 1e-4) {
-			t.Fatalf("reference has audible data after tracker EOF: %v", sample)
+	if silentTail {
+		for i := 0; i < len(tail); i += 4 {
+			if sample := math.Float32frombits(binary.LittleEndian.Uint32(tail[i:])); !(math.Abs(float64(sample)) < 1e-4) {
+				t.Fatalf("reference has audible data after tracker EOF: %v", sample)
+			}
 		}
 	}
 	for ch := range sumRef {
