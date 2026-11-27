@@ -37,7 +37,7 @@ const (
 
 type Instrument struct {
     Name string
-    MiddleC uint16
+    MiddleC uint32
     SampleFormat uint16
     Flags uint8
     Volume uint8
@@ -45,6 +45,7 @@ type Instrument struct {
     LoopBegin int
     LoopEnd int
     Data []float32
+    RightData []float32 // nil for mono samples
 }
 
 type Note struct {
@@ -65,15 +66,17 @@ type Note struct {
 }
 
 func (note *Note) GetNotePosition() int {
-    if note.ChangeNote {
-        return note.Note
+    if note.ChangeNote && note.Note < 160 && note.Note & 15 < 12 {
+        return note.Note / 16 * 12 + note.Note % 16
     }
-
-    return 0
+    return -1
 }
 
 func (note *Note) GetName() string {
     if note.ChangeNote {
+        if note.Note == 254 {
+            return "^^^"
+        }
         octave := note.Note / 16
         noteNumber := note.Note % 16
 
@@ -117,8 +120,12 @@ type S3MFile struct {
     InitialSpeed uint8
     InitialTempo uint8
     ChannelMap map[int]int // maps channel number to channel index
-    ChannelPanning map[int]byte
+    ChannelPanning map[int]int // indexed by playback channel, range 0–256
     GlobalVolume uint8
+    MixVolume uint8
+    FastVolumeSlides bool
+    OldVibrato bool
+    AmigaLimits bool
 }
 
 func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
@@ -168,12 +175,12 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
     }
     logger.Printf("Instruments: %v", numInstruments)
 
-    var patternsIgnore uint16
-    err = binary.Read(reader, binary.LittleEndian, &patternsIgnore)
+    var patternCount uint16
+    err = binary.Read(reader, binary.LittleEndian, &patternCount)
     if err != nil {
         return nil, err
     }
-    logger.Printf("Patterns: %v", patternsIgnore)
+    logger.Printf("Patterns: %v", patternCount)
 
     var flags uint16
     err = binary.Read(reader, binary.LittleEndian, &flags)
@@ -262,7 +269,7 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
     }
 
     channelMap := make(map[int]int)
-    channelPanning := make(map[int]byte)
+    channelPanning := make(map[int]int)
 
     channelCount := 0
     for i, setting := range channelSettings {
@@ -274,22 +281,21 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
 
             logger.Printf("Channel %v default panning %v", i, setting)
 
-            channelPanning[i] = setting
-
-            /*
-            if setting <= 7 {
-                // pan left
-            } else {
-                // pan right
+            pan := 128
+            if masterVolume & 128 != 0 {
+                pan = 51
+                if setting & 8 != 0 {
+                    pan = 204
+                }
             }
-            */
+            channelPanning[channelMap[i]] = pan
         }
     }
 
     logger.Printf("Channels in use: %v", channelCount)
 
-    numPatterns := 0
     var orders []byte
+    endOfSong := false
     for range songLength {
         order, err := reader.ReadByte()
         if err != nil {
@@ -298,22 +304,13 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
 
         // log.Printf("Got pattern %v", order)
 
-        // pattern marker, ignore
-        if order == 0xfe {
-            continue
-        }
-        // end of song marker
         if order == 0xff {
-            // break
-            continue
+            endOfSong = true
         }
-        orders = append(orders, order)
-        numPatterns = max(numPatterns, int(order))
+        if !endOfSong {
+            orders = append(orders, order)
+        }
     }
-
-    // log.Printf("Song length before %v after %v", songLength, len(orders))
-
-    songLength = uint16(len(orders))
 
     var instrumentOffsets []uint16
     for range numInstruments {
@@ -328,7 +325,7 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
     }
 
     var patternOffsets []uint16
-    for range numPatterns+1 {
+    for range patternCount {
         var offset uint16
         err := binary.Read(reader, binary.LittleEndian, &offset)
         if err != nil {
@@ -341,28 +338,24 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
 
     if defaultPanning == 0xfc {
         var data [32]byte
-        for range channelCount {
-            _, err := io.ReadFull(reader, data[:])
-            if err != nil {
-                return nil, err
+        if _, err := io.ReadFull(reader, data[:]); err != nil {
+            return nil, err
+        }
+        for number, index := range channelMap {
+            if pan := data[number]; pan & 0x20 != 0 {
+                channelPanning[index] = (int(pan & 15) * 256 + 8)/15
             }
         }
-        for i := range data {
-            // only use lower 4 bits
-            data[i] = data[i] & 0xf
-            logger.Printf("Panning for channel %v: %v", i, data[i])
-        }
-        // FIXME: do something with panning data
     }
 
-    mono := (masterVolume & 128 == 0) || (masterVolume >> 7 == 0)
+    mono := masterVolume & 128 == 0
 
     logger.Printf("Mono: %v", mono)
 
     var instruments []Instrument
 
     for _, offset := range instrumentOffsets {
-        _, err := reader_.Seek(int64(offset << 4), io.SeekStart)
+        _, err := reader_.Seek(int64(offset) << 4, io.SeekStart)
         if err != nil {
             return nil, err
         }
@@ -403,25 +396,12 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
                 return nil, err
             }
 
-            var loopBegin uint16
+            var loopBegin, loopEnd uint32
             err = binary.Read(buffer, binary.LittleEndian, &loopBegin)
             if err != nil {
                 return nil, err
             }
-
-            // skip 2 bytes
-            _, err = buffer.Discard(2)
-            if err != nil {
-                return nil, err
-            }
-
-            var loopEnd uint16
             err = binary.Read(buffer, binary.LittleEndian, &loopEnd)
-            if err != nil {
-                return nil, err
-            }
-
-            _, err = buffer.Discard(2)
             if err != nil {
                 return nil, err
             }
@@ -441,22 +421,17 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
                 return nil, err
             }
 
-            // ignore for now
-            _ = packing
+            if packing != 0 {
+                return nil, fmt.Errorf("unsupported S3M PCM packing %d", packing)
+            }
 
             flags, err := buffer.ReadByte()
             if err != nil {
                 return nil, err
             }
 
-            var middleC uint16
+            var middleC uint32
             err = binary.Read(buffer, binary.LittleEndian, &middleC)
-            if err != nil {
-                return nil, err
-            }
-
-            _, err = buffer.Discard(2)
-
             if err != nil {
                 return nil, err
             }
@@ -489,15 +464,34 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
             }
 
             buffer = bufio.NewReader(reader_)
-            data := make([]byte, sampleLength)
-            n, err := io.ReadFull(buffer, data)
-            if err != nil {
-                return nil, fmt.Errorf("Unable to read sample data: %v. Read %v", err, n)
+            if sampleLength > 16<<20 {
+                return nil, fmt.Errorf("S3M sample has too many frames: %d", sampleLength)
             }
-
-            var floatData []float32
-            for _, value := range data {
-                floatData = append(floatData, (float32(value) - 128)/128.0)
+            readPlane := func() ([]float32, error) {
+                width := 1
+                if flags & 4 != 0 { width = 2 }
+                data := make([]byte, int(sampleLength)*width)
+                if _, err := io.ReadFull(buffer, data); err != nil { return nil, err }
+                pcm := make([]float32, int(sampleLength))
+                for index := range pcm {
+                    if width == 1 {
+                        value := data[index]
+                        if sampleFormat != 1 { value ^= 128 }
+                        pcm[index] = float32(int8(value))/128
+                    } else {
+                        value := binary.LittleEndian.Uint16(data[index*2:])
+                        if sampleFormat != 1 { value ^= 32768 }
+                        pcm[index] = float32(int16(value))/32768
+                    }
+                }
+                return pcm, nil
+            }
+            left, err := readPlane()
+            if err != nil { return nil, fmt.Errorf("read S3M PCM: %w", err) }
+            var right []float32
+            if flags & 2 != 0 {
+                right, err = readPlane()
+                if err != nil { return nil, fmt.Errorf("read S3M right PCM: %w", err) }
             }
 
             instruments = append(instruments, Instrument{
@@ -508,7 +502,8 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
                 Loop: flags & 1 != 0,
                 LoopBegin: int(loopBegin),
                 LoopEnd: int(loopEnd),
-                Data: floatData,
+                Data: left,
+                RightData: right,
             })
 
             // log.Printf("Instrument %v loop begin %v end %v", i, loopBegin, loopEnd)
@@ -523,6 +518,10 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
     var patterns []Pattern
 
     for _, offset := range patternOffsets {
+        if offset == 0 {
+            patterns = append(patterns, Pattern{Rows: make([][]Note, 64)})
+            continue
+        }
         var pattern Pattern
         _, err := reader_.Seek(int64(offset) << 4, io.SeekStart)
         if err != nil {
@@ -583,9 +582,6 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
             if marker & 32 != 0 {
                 hasNote = true
                 hasSample = true
-                // set default volume
-                hasVolume = true
-                volume = 64
                 note, err = buffer.ReadByte()
                 if err != nil {
                     return nil, err
@@ -618,9 +614,9 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
 
             noteObject := Note{
                 SampleNumber: int(instrument),
-                ChangeSample: hasSample,
+                ChangeSample: hasSample && instrument != 0,
                 Note: int(note),
-                ChangeNote: hasNote,
+                ChangeNote: hasNote && note != 255,
                 Volume: int(volume),
                 ChangeVolume: hasVolume,
                 ChangeEffect: hasEffect,
@@ -645,6 +641,23 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
         patterns = append(patterns, pattern)
     }
 
+    mixVolume := int(masterVolume & 127)
+    switch {
+    case sampleFormat == 1 && masterVolume < 8:
+        mixVolume = min(127, (int(masterVolume)+1)*16)
+    case masterVolume == 2 || masterVolume == 18:
+        mixVolume = 32
+    case mixVolume == 0:
+        mixVolume = 48
+    default:
+        mixVolume = max(16, mixVolume)
+    }
+    if mono {
+        mixVolume = (mixVolume*8 + 5)/11
+    }
+    if globalVolume == 0 && trackerVersion < 0x1320 {
+        globalVolume = 64
+    }
     return &S3MFile{
         Name: string(name),
         Instruments: instruments,
@@ -655,6 +668,10 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
         SongLength: len(orders),
         InitialSpeed: initialSpeed,
         InitialTempo: initialTempo,
-        GlobalVolume: globalVolume,
+        GlobalVolume: min(64, globalVolume),
+        MixVolume: uint8(mixVolume),
+        FastVolumeSlides: trackerVersion == 0x1300 || flags & 0x40 != 0,
+        OldVibrato: flags & 1 != 0,
+        AmigaLimits: flags & 0x10 != 0,
     }, nil
 }
