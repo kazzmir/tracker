@@ -220,11 +220,17 @@ func (c *Channel) updateTick(tick int) {
 	}
 	if tick == delay && delay < c.player.Speed {
 		c.trigger()
-	}
-	if tick == 0 {
+		// Direct volume and pan belong to the delayed note, not to the
+		// still-playing voice on the first tick of the row.
 		switch {
 		case v >= 0x10 && v <= 0x50:
 			c.volume = v - 16
+		case v>>4 == 12:
+			c.pan = (v & 15) * 16
+		}
+	}
+	if tick == 0 {
+		switch {
 		case v>>4 == 8:
 			c.volume -= v & 15
 		case v>>4 == 9:
@@ -233,8 +239,6 @@ func (c *Channel) updateTick(tick int) {
 			remember(&c.vibratoSpeed, v&15)
 		case v>>4 == 11:
 			remember(&c.vibratoDepth, v&15)
-		case v>>4 == 12:
-			c.pan = (v & 15) * 16
 		case v>>4 == 15:
 			remember(&c.tone, (v&15)*16)
 		}

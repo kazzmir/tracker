@@ -54,6 +54,24 @@ func TestSampleSelectionAndSustain(t *testing.T) {
 	}
 }
 
+func TestDelayedNoteVolume(t *testing.T) {
+	inst := &Instrument{Samples: []Sample{{Volume: 64, Data: []float32{1}}}}
+	p := MakePlayer(&XMFile{Channels: 1, LinearPeriods: true, Instruments: []*Instrument{inst}}, 48000)
+	c := p.Channels[0]
+	c.note = Note{NoteNumber: 49, Instrument: 1}
+	c.updateTick(0)
+	c.note = Note{NoteNumber: 50, Instrument: 1, Volume: 0x20, EffectType: EffectExtended, EffectParameter: 0xd2}
+	c.updateTick(0)
+	c.updateTick(1)
+	if c.volume != 64 || c.period != 4608 {
+		t.Fatal("delayed row changed the playing voice before its trigger")
+	}
+	c.updateTick(2)
+	if c.volume != 16 || c.period != 4544 {
+		t.Fatalf("delayed trigger: volume %d, period %v", c.volume, c.period)
+	}
+}
+
 func TestSong2AgainstFFplay(t *testing.T) {
 	const path = "../t1/song2.xm"
 	f, err := os.Open(path)
