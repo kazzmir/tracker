@@ -242,6 +242,14 @@ func (player *Player) GetChannelData(index int, dst []float32) int {
 	}
 	return player.channels[index].scope.Peek(dst)
 }
+// GetSpectrumChannel copies recent, unmuted output as stereo sample pairs.
+func (player *Player) GetSpectrumChannel(index int, dst []float32) int {
+	if index < 0 || index >= len(player.channels) || player.channels[index].mute.Load() {
+		return 0
+	}
+	return player.channels[index].scope.PeekLatest(dst[:len(dst)&^1])
+}
+
 func (player *Player) ToggleMuteChannel(index int) bool {
 	if index < 0 || index >= len(player.channels) {
 		return false

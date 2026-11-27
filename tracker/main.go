@@ -321,7 +321,8 @@ func (engine *Engine) Update() error {
         }
     }
 
-    if engine.AudioContext.IsReady() {
+    audioReady := engine.AudioContext.IsReady()
+    if audioReady {
         if engine.updates >= 0 {
             engine.Start.Do(func() {
                 for _, player := range engine.Players {
@@ -337,6 +338,9 @@ func (engine *Engine) Update() error {
         }
     }
 
+    if engine.UIHooks.UpdateSpectrum != nil {
+        engine.UIHooks.UpdateSpectrum(audioReady && !engine.Paused, engine.volume, 1.0/float64(engine.fps))
+    }
     engine.UI.Update()
 
     return nil
