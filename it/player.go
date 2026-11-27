@@ -207,12 +207,12 @@ func (player *Player) GetPattern() int {
 	}
 	return int(player.module.orders[player.order])
 }
-func (player *Player) GetCurrentOrder() int { return player.order }
-func (player *Player) GetSongLength() int   { return len(player.module.orders) }
-func (player *Player) GetChannelCount() int { return len(player.channels) }
-func (player *Player) GetSpeed() int        { return player.speed }
-func (player *Player) GetBPM() int          { return player.tempo }
-func (player *Player) IsStereo() bool       { return true }
+func (player *Player) GetCurrentOrder() int    { return player.order }
+func (player *Player) GetSongLength() int      { return len(player.module.orders) }
+func (player *Player) GetChannelCount() int    { return len(player.channels) }
+func (player *Player) GetSpeed() int           { return player.speed }
+func (player *Player) GetBPM() int             { return player.tempo }
+func (player *Player) IsStereo() bool          { return true }
 func (player *Player) GetPatternRowCount() int { return len(player.pattern().rows) }
 
 func (player *Player) GetRowNoteInfo(ch, row int) (common.NoteInfo, bool) {
@@ -296,18 +296,22 @@ func (track *channel) Read(dst []byte) (int, error) {
 }
 
 type channel struct {
-	player                                             *Player
-	buffer, scope                                      *common.AudioBuffer
-	readBuffer                                         []float32
-	mute                                               atomic.Bool
-	voice                                              voice
-	tails                                              []voice
-	note                                               Note
-	instrument, volume, channelVolume, pan             int
-	surround                                           bool
-	memory                                             [27]int
-	porta, target                                      float64
-	vibratoPhase, vibratoRate, vibratoDepth, retrigger int
-	loopRow, loopCount, highOffset                     int
-	nnaOverride                                        int
+	player                                                        *Player
+	buffer, scope                                                 *common.AudioBuffer
+	readBuffer                                                    []float32
+	mute                                                          atomic.Bool
+	voice                                                         voice
+	tails                                                         []voice
+	note                                                          Note
+	instrument, volume, channelVolume, pan                        int
+	surround                                                      bool
+	memory                                                        [27]int
+	porta, target                                                 float64
+	vibratoPhase, vibratoRate, vibratoDepth, retrigger            int
+	loopRow, loopCount, highOffset                                int
+	panbrelloPhase, panbrelloSpeed, panbrelloDepth, panbrelloWave int
+	savedPan                                                      int
+	savedSurround, restorePan                                     bool
+	panbrelloNoise                                                uint32
+	nnaOverride                                                   int
 }

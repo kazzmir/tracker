@@ -6,10 +6,13 @@ type voice struct {
 	sample                                       *sample
 	instrument                                   *instrument
 	key, mapped, volume, pan, channelVolume      int
+	panOffset                                    int
 	surround, released, fading, backward         bool
 	position, frequency, step                    float64
 	envPos                                       [3]int
 	envEnabled                                   byte
+	vibratoPhase, vibratoDepth                   int
+	vibratoNoise                                 uint32
 	fade                                         int
 	leftGain, rightGain, leftTarget, rightTarget float32
 	ramp                                         int
@@ -119,6 +122,10 @@ func (track *channel) trigger(portamento bool) {
 	if note.fields&hasPitch == 0 {
 		return
 	}
+	if track.restorePan {
+		track.pan, track.surround = track.savedPan, track.savedSurround
+		track.restorePan = false
+	}
 	// IT's note table stores semitone ratios in 16.16 fixed point.
 	ratio := math.Round(65536 * math.Exp2(float64(mapped%12)/12))
 	freq := math.Floor(float64(wave.c5) * math.Ldexp(ratio/65536, mapped/12-5))
@@ -152,13 +159,17 @@ func (track *channel) trigger(portamento bool) {
 			track.tails = append(track.tails, tail)
 		}
 	}
+	defaultPan := -1
 	if inst != nil && inst.pan&128 == 0 {
-		track.pan = min(256, (inst.pan&127)*4)
-		track.surround = false
+		defaultPan = inst.pan & 127
 	}
 	if wave.pan&128 != 0 {
-		track.pan = min(256, (wave.pan&127)*4)
-		track.surround = false
+		defaultPan = wave.pan & 127
+	}
+	if defaultPan >= 0 {
+		// Instrument/sample pan only overrides the current note's pan.
+		track.savedPan, track.savedSurround, track.restorePan = track.pan, track.surround, true
+		track.pan, track.surround = min(256, defaultPan*4), false
 	}
 	track.voice = voice{sample: wave, instrument: inst, key: key, mapped: mapped, fade: 65536, frequency: freq}
 	track.voice.resetEnvelopes()
@@ -229,7 +240,9 @@ func (active *voice) setup(player *Player) {
 		return
 	}
 	vol *= float64(active.fade) / 65536 * float64(player.global) / 128 * float64(player.module.mixVolume) / 128
-	pan = 128 + (pan-128)*float64(player.module.separation)/128
+	// Match the default stereo mix in ffplay/libopenmpt: use the channel
+	// pan directly, without the legacy header's extra separation scaling.
+	pan += float64(active.panOffset)
 	pan = max(0, min(256, pan)) / 256
 	if player.module.flags&1 == 0 {
 		pan = .5
@@ -239,10 +252,41 @@ func (active *voice) setup(player *Player) {
 		active.leftTarget = float32(vol * .5)
 		active.rightTarget = -active.leftTarget
 	}
+	frequency = active.applySampleVibrato(frequency)
 	active.step = min(65536, max(0, frequency/float64(player.rate)))
 	if active.leftGain != active.leftTarget || active.rightGain != active.rightTarget {
 		active.ramp = max(1, player.rate/1000)
 	}
+}
+
+// Sample vibrato has independent phase and sweep state for every voice,
+// including notes continuing in the background after an NNA.
+func (active *voice) applySampleVibrato(frequency float64) float64 {
+	wave := active.sample
+	if wave.vibratoRate == 0 || wave.vibratoDepth == 0 {
+		return frequency
+	}
+	active.vibratoDepth = min(wave.vibratoDepth*256, active.vibratoDepth+wave.vibratoSweep)
+	phase := active.vibratoPhase
+	active.vibratoPhase = (phase + wave.vibratoRate) & 255
+	var height int
+	switch wave.vibratoWave {
+	case 1:
+		height = 64 - (phase+1)/2
+	case 2:
+		if phase < 128 {
+			height = 64
+		}
+	case 3:
+		active.vibratoNoise = active.vibratoNoise*1664525 + 1013904223
+		height = int(active.vibratoNoise>>25) - 64
+	case 4:
+		height = (phase+1)/2 - 64
+	default:
+		height = int(math.Round(64 * math.Sin(float64(phase)*math.Pi/128)))
+	}
+	amount := height * (active.vibratoDepth / 256) / 64
+	return frequency * math.Exp2(float64(amount)/768)
 }
 
 func (active *voice) frame() (float32, float32) {

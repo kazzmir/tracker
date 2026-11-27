@@ -15,21 +15,22 @@ var ErrNotIT = errors.New("not an Impulse Tracker module")
 const maxChannels = 64
 
 type Module struct {
-	name                                              string
-	orders                                            []byte
-	patterns                                          []pattern
-	samples                                           []sample
-	instruments                                       []instrument
-	channels                                          int
-	pan, channelVolume                                [maxChannels]byte
-	speed, tempo, globalVolume, mixVolume, separation int
-	flags                                             uint16
+	name                                  string
+	orders                                []byte
+	patterns                              []pattern
+	samples                               []sample
+	instruments                           []instrument
+	channels                              int
+	pan, channelVolume                    [maxChannels]byte
+	speed, tempo, globalVolume, mixVolume int
+	flags                                 uint16
 }
 
 type sample struct {
-	left, right                   []float32
-	c5, volume, globalVolume, pan int
-	loop, sustain                 sampleLoop
+	left, right                                          []float32
+	c5, volume, globalVolume, pan                        int
+	vibratoRate, vibratoDepth, vibratoSweep, vibratoWave int
+	loop, sustain                                        sampleLoop
 }
 type sampleLoop struct {
 	start, end int
@@ -119,11 +120,8 @@ func Load(reader io.Reader) (*Module, error) {
 		return nil, fmt.Errorf("unsupported IT order, instrument, sample or pattern count")
 	}
 	flags, compatible := le.Uint16(data[44:]), le.Uint16(data[42:])
-	if flags&4 != 0 && compatible < 0x200 {
-		return nil, fmt.Errorf("old IT instrument format is not supported")
-	}
 	module := &Module{name: strings.TrimSpace(string(bytes.TrimRight(data[4:30], "\x00"))), flags: flags,
-		speed: max(1, int(data[50])), tempo: max(32, int(data[51])), globalVolume: min(128, int(data[48])), mixVolume: min(128, int(data[49]&127)), separation: min(128, int(data[52]))}
+		speed: max(1, int(data[50])), tempo: max(32, int(data[51])), globalVolume: min(128, int(data[48])), mixVolume: min(128, int(data[49]))}
 	copy(module.pan[:], data[64:128])
 	copy(module.channelVolume[:], data[128:192])
 	table := 192 + numOrders
@@ -140,16 +138,7 @@ func Load(reader io.Reader) (*Module, error) {
 			if err != nil || string(header[:4]) != "IMPI" {
 				return nil, fmt.Errorf("invalid IT instrument %d", index+1)
 			}
-			inst.nna, inst.dct, inst.dca = int(header[17]), int(header[18]), int(header[19])
-			inst.fadeout = int(le.Uint16(header[20:]))
-			inst.globalVolume = min(128, int(header[24]))
-			inst.pan = int(header[25])
-			for key := range 120 {
-				inst.notes[key], inst.samples[key] = header[64+key*2], header[65+key*2]
-			}
-			inst.volume = readEnvelope(header[304:])
-			inst.panning = readEnvelope(header[386:])
-			inst.pitch = readEnvelope(header[468:])
+			inst = readInstrument(header, compatible)
 		}
 		module.instruments = append(module.instruments, inst)
 	}
@@ -188,6 +177,45 @@ func section(data []byte, offset uint32, count int) ([]byte, error) {
 	return data[int(offset) : int(offset)+count], nil
 }
 
+func readInstrument(header []byte, compatible uint16) instrument {
+	var inst instrument
+	for key := range inst.notes {
+		note := header[64+key*2]
+		if note >= 120 {
+			note = byte(key)
+		}
+		inst.notes[key], inst.samples[key] = note, header[65+key*2]
+	}
+	if compatible < 0x200 {
+		// IT 1.x has a single volume envelope, with byte-sized tick/value
+		// pairs after a 200-byte precalculated envelope table.
+		inst.nna, inst.dct = int(header[26]), int(header[27])
+		inst.fadeout = int(le.Uint16(header[24:])) * 2
+		inst.globalVolume, inst.pan = 128, 128 // full volume, keep channel pan
+		env := &inst.volume
+		env.flags = int(header[17] & 7)
+		env.loopStart, env.loopEnd = int(header[18]), int(header[19])
+		env.susStart, env.susEnd = int(header[20]), int(header[21])
+		for index := range env.points {
+			offset := 504 + index*2
+			if header[offset] == 255 {
+				break
+			}
+			env.points[index] = point{int(header[offset]), int(header[offset+1])}
+			env.count++
+		}
+		return inst
+	}
+	inst.nna, inst.dct, inst.dca = int(header[17]), int(header[18]), int(header[19])
+	inst.fadeout = int(le.Uint16(header[20:]))
+	inst.globalVolume = min(128, int(header[24]))
+	inst.pan = int(header[25])
+	inst.volume = readEnvelope(header[304:])
+	inst.panning = readEnvelope(header[386:])
+	inst.pitch = readEnvelope(header[468:])
+	return inst
+}
+
 func readEnvelope(header []byte) envelope {
 	env := envelope{flags: int(header[0]), count: min(25, int(header[1])), loopStart: int(header[2]), loopEnd: int(header[3]), susStart: int(header[4]), susEnd: int(header[5])}
 	for index := range env.count {
@@ -199,7 +227,8 @@ func readEnvelope(header []byte) envelope {
 
 func readSample(data, header []byte, budget *int) (sample, error) {
 	flags, convert := header[18], header[46]
-	decoded := sample{c5: max(1, int(le.Uint32(header[60:]))), volume: min(64, int(header[19])), globalVolume: min(64, int(header[17])), pan: int(header[47])}
+	decoded := sample{c5: max(1, int(le.Uint32(header[60:]))), volume: min(64, int(header[19])), globalVolume: min(64, int(header[17])), pan: int(header[47]),
+		vibratoRate: int(header[76]), vibratoDepth: int(header[77] & 127), vibratoSweep: int(header[78]), vibratoWave: int(header[79] & 7)}
 	length := le.Uint32(header[48:])
 	if length == 0 || flags&1 == 0 {
 		return decoded, nil
