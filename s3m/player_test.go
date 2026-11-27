@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -44,6 +45,103 @@ func TestScreamTrackerSlidesAndNoteDelay(t *testing.T) {
 	track.updateTick(0)
 	if track.volume != 19 {
 		t.Fatalf("ST3.00 fast slide did not apply on tick zero: %d", track.volume)
+	}
+}
+
+func TestImpulseTrackerExportPitchAndMemory(t *testing.T) {
+	file := &S3MFile{impulseTracker: true, separateEffectMemory: true, ChannelMap: map[int]int{0: 0}, Instruments: []Instrument{{MiddleC: 8363, Data: []float32{1}}}}
+	track := &MakePlayer(file, 48000).channels[0]
+	track.beginRow(Note{ChangeNote: true, Note: 0x40, ChangeSample: true, SampleNumber: 1})
+	track.updateTick(0)
+	if track.period != 8363 {
+		t.Fatalf("C-4 frequency = %d, want 8363 Hz", track.period)
+	}
+	for _, command := range []Note{
+		{ChangeEffect: true, EffectNumber: EffectPortamentoDown, EffectParameter: 1},
+		{ChangeEffect: true, EffectNumber: EffectVolumeSlide, EffectParameter: 0x20},
+		{ChangeEffect: true, EffectNumber: EffectPortamentoUp},
+	} {
+		track.beginRow(command)
+		track.updateTick(0)
+		track.updateTick(1)
+	}
+	if track.period != 8362 {
+		t.Fatalf("frequency after E01, D20, F00 = %d, want 8362 Hz", track.period)
+	}
+}
+
+func TestTempoAndGlobalVolumeSlides(t *testing.T) {
+	player := MakePlayer(&S3MFile{GlobalVolume: 40, InitialTempo: 125, ChannelMap: map[int]int{0: 0}}, 48000)
+	track := &player.channels[0]
+	for _, command := range []Note{
+		{ChangeEffect: true, EffectNumber: EffectSetTempo, EffectParameter: 0x03},
+		{ChangeEffect: true, EffectNumber: EffectSetTempo},
+		{ChangeEffect: true, EffectNumber: EffectGlobalVolumeSlide, EffectParameter: 0x2f},
+		{ChangeEffect: true, EffectNumber: EffectGlobalVolumeSlide, EffectParameter: 0x01},
+		{ChangeEffect: true, EffectNumber: EffectGlobalVolumeSlide},
+	} {
+		track.beginRow(command)
+		track.updateTick(0)
+		track.updateTick(1)
+		track.updateTick(2)
+	}
+	if player.BPM != 113 || player.GlobalVolume != 38 {
+		t.Fatalf("tempo = %d, global volume = %d; want 113 and 38", player.BPM, player.GlobalVolume)
+	}
+}
+
+func TestSampleOffsetReplacesPreviousOffsetAndWraps(t *testing.T) {
+	file := &S3MFile{ChannelMap: map[int]int{0: 0}, Instruments: []Instrument{{Data: make([]float32, 1024), Loop: true, LoopBegin: 100, LoopEnd: 700}}}
+	track := &MakePlayer(file, 48000).channels[0]
+	for _, row := range []struct {
+		note     Note
+		position float64
+	}{
+		{Note{ChangeNote: true, Note: 0x40, ChangeSample: true, SampleNumber: 1, ChangeEffect: true, EffectNumber: EffectSampleOffset, EffectParameter: 1}, 256},
+		{Note{ChangeNote: true, Note: 0x40, ChangeEffect: true, EffectNumber: EffectSampleOffset, EffectParameter: 2}, 512},
+		{Note{ChangeNote: true, Note: 0x40}, 512},
+		{Note{ChangeNote: true, Note: 0x40, ChangeEffect: true, EffectNumber: EffectSampleOffset, EffectParameter: 3}, 168},
+	} {
+		track.beginRow(row.note)
+		track.updateTick(0)
+		if track.position != row.position {
+			t.Fatalf("sample position = %g, want %g", track.position, row.position)
+		}
+	}
+}
+
+func TestGUSPortamentoKeepsPlayingSample(t *testing.T) {
+	file := &S3MFile{ChannelMap: map[int]int{0: 0}, screamTrackerGUS: true, Instruments: []Instrument{
+		{Data: make([]float32, 32), MiddleC: 8363},
+		{Data: make([]float32, 32), MiddleC: 16726},
+	}}
+	track := &MakePlayer(file, 48000).channels[0]
+	track.beginRow(Note{ChangeNote: true, Note: 0x40, ChangeSample: true, SampleNumber: 1})
+	track.updateTick(0)
+	track.position = 12
+	track.beginRow(Note{ChangeNote: true, Note: 0x40, ChangeSample: true, SampleNumber: 2, ChangeEffect: true, EffectNumber: EffectPortamentoToNote, EffectParameter: 1})
+	track.updateTick(0)
+	if track.voice != &file.Instruments[0] || track.position != 12 || track.target != 856 {
+		t.Fatalf("GUS portamento changed playing sample or used wrong tuning: position %g, target %d", track.position, track.target)
+	}
+}
+
+func TestScreamTrackerCollectionAgainstFFplay(t *testing.T) {
+	for _, fixture := range []struct {
+		name                  string
+		frames                int
+		correlation, maxError float64
+	}{
+		{"Spummie Toy", 10400256, .99, .15},
+		{"Time For Tennis", 10293882, .99, .15},
+		{"Private Territory", 14128687, .98, .20},
+		{"Through The Void", 9569280, .995, .15},
+		{"Fort Genezis", 12950386, .995, .15},
+		{"Unicorn Magic", 9319104, .98, .20},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			compareWithFFplay(t, filepath.Join("..", "t1", "Scream Tracker 3", fixture.name+".s3m"), fixture.frames, fixture.correlation, fixture.maxError)
+		})
 	}
 }
 

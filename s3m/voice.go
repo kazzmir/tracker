@@ -20,6 +20,7 @@ type channel struct {
 	position                                             float64
 	period, target, toneSpeed                            int
 	memory, parameter, offset, previousOffset, retrigger int
+	effectMemory                                         [27]int
 	vibratoPhase, vibratoRate, vibratoDepth, vibratoWave int
 	tremoloPhase, tremoloRate, tremoloDepth, tremoloWave int
 	loopRow, loopCount, tremorCount                      int
@@ -29,7 +30,9 @@ type channel struct {
 	ramp                                                 int
 }
 
-func notePeriod(note int, instrument *Instrument) int {
+const pitchClock = 8363 * 1712
+
+func notePeriod(note int, instrument *Instrument, useHz bool) int {
 	if note < 0 || note >= 160 || note&15 >= 12 {
 		return 0
 	}
@@ -38,7 +41,18 @@ func notePeriod(note int, instrument *Instrument) int {
 	if instrument != nil && instrument.MiddleC != 0 {
 		c4 = int(instrument.MiddleC)
 	}
+	if useHz {
+		ratio := math.Round(65536 * math.Exp2(float64(note&15)/12))
+		return int(math.Ldexp(float64(c4)*ratio/65536, note/16-4))
+	}
 	return int((int64(periods[note&15]) * 8363 * 16) / (int64(c4) << uint(note>>4)))
+}
+
+func (track *channel) samplePlaying() bool {
+	if track.voice == nil {
+		return false
+	}
+	return track.voice.OPL != nil || track.position < float64(len(track.voice.Data))
 }
 
 func (track *channel) trigger(portamento bool) {
@@ -56,11 +70,17 @@ func (track *channel) trigger(portamento bool) {
 			return
 		}
 		instrument := track.player.GetInstrument(track.selected)
-		period := notePeriod(note.Note, instrument)
+		period := notePeriod(note.Note, instrument, track.player.S3M.impulseTracker)
 		if period > 0 {
 			if portamento && track.period > 0 && track.voice != nil {
 				track.target = period
-				if instrument.playable() {
+				playing := track.samplePlaying()
+				// GUS keeps the playing sample but takes the slide target from
+				// the new instrument's tuning. A finished sample can be replaced.
+				if instrument.playable() && (!track.player.S3M.screamTrackerGUS || !playing) {
+					if track.voice != instrument && (track.player.S3M.impulseTracker || !playing) {
+						track.position = 0
+					}
 					track.voice = instrument
 				}
 			} else {
@@ -76,13 +96,26 @@ func (track *channel) trigger(portamento bool) {
 				}
 				track.left, track.right = 0, 0
 				track.retrigger = 0
-				if note.ChangeSample {
-					track.previousOffset = 0
+				if track.player.S3M.separateEffectMemory {
+					if note.EffectNumber == EffectSampleOffset {
+						track.position = float64(track.offset * 256)
+					}
+				} else {
+					if note.ChangeSample {
+						track.previousOffset = 0
+					}
+					if note.EffectNumber == EffectSampleOffset {
+						// Recall the last absolute offset on instrument-less notes.
+						track.previousOffset = track.offset * 256
+					}
+					track.position = float64(track.previousOffset)
 				}
-				if note.EffectNumber == EffectSampleOffset {
-					track.previousOffset += track.offset * 256
+				if instrument != nil && instrument.Loop {
+					start, end := instrument.LoopBegin, min(instrument.LoopEnd, len(instrument.Data))
+					if end-start > 1 && track.position >= float64(end) {
+						track.position = float64(start) + math.Mod(track.position-float64(start), float64(end-start))
+					}
 				}
-				track.position = float64(track.previousOffset)
 			}
 		}
 	} else if note.ChangeSample {
@@ -124,12 +157,29 @@ func (track *channel) beginRow(note Note) {
 		if param != 0 {
 			track.offset = param
 		}
+	case EffectSetTempo:
+		if param != 0 {
+			track.effectMemory[effect] = param
+		}
+		track.parameter = track.effectMemory[effect]
 	case EffectVolumeSlide, EffectPortamentoDown, EffectPortamentoUp, EffectTremor, EffectArpeggio, EffectVibratoAndVolumeSlide, EffectPortamentoAndVolumeSlide, EffectRetriggerAndVolumeSlide, EffectTremolo, EffectSetExtra:
-		if param == 0 {
+		if track.player.S3M.separateEffectMemory {
+			key := effect
+			switch effect {
+			case EffectPortamentoUp:
+				key = EffectPortamentoDown
+			case EffectVibratoAndVolumeSlide, EffectPortamentoAndVolumeSlide:
+				key = EffectVolumeSlide
+			}
+			if param != 0 {
+				track.effectMemory[key] = param
+			}
+			track.parameter = track.effectMemory[key]
+		} else if param == 0 {
 			track.parameter = track.memory
 		}
 	}
-	if effect != 0 && param != 0 {
+	if !track.player.S3M.separateEffectMemory && effect != 0 && param != 0 {
 		track.memory = param
 		track.tremoloRate = param >> 4
 		track.tremoloDepth = param & 15
@@ -186,6 +236,20 @@ func (track *channel) updateTick(tick int) {
 		}
 	}
 	switch effect {
+	case EffectSetTempo:
+		if !first && param > 0 && param < 32 {
+			old := player.BPM
+			if param < 16 {
+				player.BPM = max(32, old-param)
+			} else {
+				player.BPM = min(255, old+(param&15))
+			}
+			if player.BPM != old {
+				player.speedChanged()
+			}
+		}
+	case EffectGlobalVolumeSlide:
+		player.slideGlobalVolume(param, first)
 	case EffectVolumeSlide, EffectVibratoAndVolumeSlide, EffectPortamentoAndVolumeSlide:
 		hi, lo := param>>4, param&15
 		switch {
@@ -220,7 +284,11 @@ func (track *channel) updateTick(tick int) {
 			if effect == EffectPortamentoUp {
 				amount = -amount
 			}
-			track.period += amount
+			if player.S3M.impulseTracker && int64(pitchClock)+int64(track.period)*int64(amount) <= 0 {
+				track.period = 0
+			} else {
+				track.period = slidePitch(track.period, amount, player.S3M.impulseTracker)
+			}
 			if track.period < 1 {
 				track.voice = nil
 				track.period = 0
@@ -245,9 +313,52 @@ func (track *channel) updateTick(tick int) {
 	}
 	if !first && (effect == EffectPortamentoToNote || effect == EffectPortamentoAndVolumeSlide) && track.target > 0 && track.period > 0 {
 		step := track.toneSpeed * 4
-		track.period += max(-step, min(step, track.target-track.period))
+		if player.S3M.impulseTracker {
+			if track.period < track.target {
+				track.period = min(track.target, slidePitch(track.period, -step, true))
+			} else if track.period > track.target {
+				track.period = max(track.target, slidePitch(track.period, step, true))
+			}
+		} else {
+			track.period += max(-step, min(step, track.target-track.period))
+		}
 	}
 	track.volume = max(0, min(track.volume, 64))
+}
+
+func (player *Player) slideGlobalVolume(param int, first bool) {
+	if param != 0 {
+		player.globalSlide = param
+	}
+	up, down := player.globalSlide>>4, player.globalSlide&15
+	delta := 0
+	switch {
+	case down == 15 && up != 0:
+		if first {
+			delta = up
+		}
+	case up == 15 && down != 0:
+		if first {
+			delta = -down
+		}
+	case !first && up != 0:
+		delta = up
+	case !first:
+		delta = -down
+	}
+	player.GlobalVolume = uint8(max(0, min(64, int(player.GlobalVolume)+delta)))
+}
+
+// Impulse Tracker exports use integer Hz; the other S3Ms use Amiga periods.
+func slidePitch(pitch, periodDelta int, useHz bool) int {
+	if !useHz {
+		return pitch + periodDelta
+	}
+	denominator := int64(pitchClock) + int64(pitch)*int64(periodDelta)
+	if denominator <= 0 {
+		return math.MaxInt32
+	}
+	return int(min(math.MaxInt32, int64(pitchClock)*int64(pitch)/denominator))
 }
 
 func (player *Player) speedChanged() {
@@ -335,7 +446,11 @@ func (track *channel) prepare() {
 	effect := int(track.note.EffectNumber)
 	period := track.period
 	if player.S3M.AmigaLimits && period > 0 {
-		period = max(452, min(3424, period))
+		if player.S3M.impulseTracker {
+			period = max(pitchClock/3424, min(pitchClock/452, period))
+		} else {
+			period = max(452, min(3424, period))
+		}
 	}
 	if effect == EffectVibrato || effect == EffectVibratoAndVolumeSlide || effect == EffectFineVibrato {
 		divisor := 64
@@ -345,7 +460,7 @@ func (track *channel) prepare() {
 		if effect == EffectFineVibrato {
 			divisor *= 4
 		}
-		period += waveValue(track.vibratoPhase, track.vibratoWave) * track.vibratoDepth * 4 / divisor
+		period = slidePitch(period, waveValue(track.vibratoPhase, track.vibratoWave)*track.vibratoDepth*4/divisor, player.S3M.impulseTracker)
 		if player.tick != 0 {
 			track.vibratoPhase = (track.vibratoPhase + track.vibratoRate) & 63
 		}
@@ -358,17 +473,28 @@ func (track *channel) prepare() {
 		case 2:
 			offset = track.parameter & 15
 		}
+		if player.S3M.impulseTracker {
+			offset = -offset
+		}
 		period = int(float64(period) * math.Exp2(-float64(offset)/12))
 	}
 	track.step = 0
+	frequency := float64(period)
+	if !player.S3M.impulseTracker {
+		frequency = pitchClock / float64(max(1, period))
+	}
 	if track.period > 0 {
-		track.step = 14317456 / (float64(max(1, period)) * float64(player.SampleRate))
+		track.step = frequency / float64(player.SampleRate)
 	}
 	volume := track.volume
 	if effect == EffectTremolo {
-		volume += waveValue(track.tremoloPhase, track.tremoloWave) * track.tremoloDepth / 32
+		depth, rate := track.tremoloDepth, track.tremoloRate
+		if player.S3M.separateEffectMemory {
+			depth, rate = track.parameter&15, track.parameter>>4
+		}
+		volume += waveValue(track.tremoloPhase, track.tremoloWave) * depth / 32
 		if player.tick != 0 {
-			track.tremoloPhase = (track.tremoloPhase + track.tremoloRate) & 63
+			track.tremoloPhase = (track.tremoloPhase + rate) & 63
 		}
 	}
 	if effect == EffectTremor {
@@ -378,7 +504,7 @@ func (track *channel) prepare() {
 		}
 	}
 	if track.voice != nil && track.voice.OPL != nil && track.period > 0 {
-		track.syncOPL(period, max(0, min(64, volume)))
+		track.syncOPL(frequency, max(0, min(64, volume)))
 	} else if track.fm != nil {
 		track.fm.noteOff()
 	}

@@ -77,7 +77,7 @@ func (voice *oplVoice) setPitch(frequency float64) {
 	voice.keyOn = true
 }
 
-func (track *channel) syncOPL(period, volume int) {
+func (track *channel) syncOPL(frequency float64, volume int) {
 	patch := track.voice.OPL
 	if track.fm == nil {
 		track.fm = &oplVoice{chip: impsynth.New(track.player.SampleRate)}
@@ -95,6 +95,6 @@ func (track *channel) syncOPL(period, volume int) {
 		track.fm.setPatch(patch)
 	}
 	track.fm.setVolume((volume*63 + 32) / 64)
-	track.fm.setPitch(14317456 / float64(max(1, period)) * 261.625 / 8363)
+	track.fm.setPitch(frequency * 261.625 / 8363)
 	track.fmTrigger = false
 }

@@ -19,6 +19,7 @@ type Player struct {
 	channels                                                 []channel
 	tick, framesLeft, nextOrder, breakRow, delay, extraTicks int
 	remainder                                                float64
+	globalSlide                                              int
 }
 
 func MakePlayer(file *S3MFile, rate int) *Player {
