@@ -359,6 +359,43 @@ func TestGenerateStereoS16ProducesPCM(t *testing.T) {
 	}
 }
 
+func TestOPL3OutputRouting(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		mode, flags uint8
+		left, right bool
+	}{
+		{"legacy ignores routing", 0, 0x10, true, true},
+		{"left only", 1, 0x10, true, false},
+		{"right only", 1, 0x20, false, true},
+		{"both enabled", 1, 0x30, true, true},
+		{"both disabled", 1, 0x00, false, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			chip := New(opl3DefaultSampleRate)
+			writeBenchmarkVoice(chip, 0)
+			chip.WriteReg(0xc0, test.flags)
+			chip.WriteReg(0x105, test.mode)
+			var audible [2]bool
+			for index, sample := range chip.GenerateStereoS16(2048) {
+				audible[index%2] = audible[index%2] || sample != 0
+			}
+			if want := [2]bool{test.left, test.right}; audible != want {
+				t.Fatalf("audible left/right = %v, want %v", audible, want)
+			}
+		})
+	}
+}
+
+func TestGenerateRejectsOversizedFrameCounts(t *testing.T) {
+	chip := New(48000)
+	for _, frames := range []int{math.MaxInt/4 + 1, math.MaxInt/2 + 1} {
+		if chip.GenerateStereoS16(frames) != nil || chip.GenerateMonoU8(frames) != nil {
+			t.Fatalf("accepted oversized request for %d frames", frames)
+		}
+	}
+}
+
 func TestGenerateStereoS16ReusesBuffer(t *testing.T) {
 	opl := New(49716)
 	opl.WriteReg(0x20, 0x01)

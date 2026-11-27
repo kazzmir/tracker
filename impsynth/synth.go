@@ -95,7 +95,6 @@ var (
 		0.72,
 		0.80,
 	}
-	oplWaveTable  [8][oplWaveTableSize]float64
 	oplAttenTable [oplAttenTableSize]float64
 	oplEnvShift   [64][14][4][2]uint8
 	oplWave0LUT   [oplWaveTableSize][oplEnvelopeMax + 1]int16
@@ -207,7 +206,6 @@ type Synth struct {
 }
 
 func init() {
-	buildOPLWaveTables()
 	buildOPLAttenuationTable()
 	buildOPLEnvelopeShiftTable()
 	buildOPLWave0LUT()
@@ -378,10 +376,11 @@ func (o *Synth) WriteReg(addr uint16, value uint8) {
 }
 
 // GenerateStereoS16 produces interleaved stereo signed-16 PCM.
+// It returns nil if the frame count is non-positive or the buffer size would overflow.
 // The returned slice is backed by an internal reusable buffer and is only
 // valid until the next GenerateStereoS16/GenerateMonoU8 call on this instance.
 func (o *Synth) GenerateStereoS16(frames int) []int16 {
-	if o == nil || frames <= 0 || o.sampleRate <= 0 {
+	if o == nil || frames <= 0 || frames > math.MaxInt/4 || o.sampleRate <= 0 {
 		return nil
 	}
 	need := frames * 2
@@ -1182,21 +1181,17 @@ func (o *Synth) refreshChannelControl(ch int) {
 		o.updateRenderMode(ch)
 		return
 	}
-	left := (c0 & 0x10) != 0
-	right := (c0 & 0x20) != 0
 	if o.stereoExt {
 		o.updateRenderMode(ch)
 		return
 	}
-	switch {
-	case left && right:
+	if o.regs[0x105]&1 == 0 {
+		// In legacy mode the output-enable bits are ignored.
 		o.ch[ch].panL, o.ch[ch].panR = oplPanGainUnit, oplPanGainUnit
-	case left:
-		o.ch[ch].panL, o.ch[ch].panR = 0, oplPanGainUnit
-	case right:
-		o.ch[ch].panL, o.ch[ch].panR = oplPanGainUnit, 0
-	default:
-		o.ch[ch].panL, o.ch[ch].panR = oplPanGainUnit, oplPanGainUnit
+	} else {
+		// OPL3 routes bit 4 to the left output and bit 5 to the right.
+		o.ch[ch].panL = int32((c0>>4)&1) * oplPanGainUnit
+		o.ch[ch].panR = int32((c0>>5)&1) * oplPanGainUnit
 	}
 	o.updateRenderMode(ch)
 }
@@ -1492,61 +1487,6 @@ func oplSlotForChannelOp(ch int, op int) int {
 		return modSlots[ch]
 	}
 	return carSlots[ch]
-}
-
-func buildOPLWaveTables() {
-	for wave := 0; wave < len(oplWaveTable); wave++ {
-		for i := 0; i < oplWaveTableSize; i++ {
-			oplWaveTable[wave][i] = oplWaveSample(wave, i)
-		}
-	}
-}
-
-func oplWaveSample(wave int, idx int) float64 {
-	idx &= oplWaveTableMask
-	phase := float64(idx) / float64(oplWaveTableSize)
-	switch wave & 0x07 {
-	case 0:
-		return math.Sin(phase * 2 * math.Pi)
-	case 1:
-		if idx >= 512 {
-			return 0
-		}
-		return math.Sin((float64(idx) / 512.0) * math.Pi)
-	case 2:
-		return math.Abs(math.Sin(phase * 2 * math.Pi))
-	case 3:
-		if (idx & 0x100) != 0 {
-			return 0
-		}
-		return math.Sin((float64(idx&0x0FF) / 256.0) * (math.Pi / 2))
-	case 4:
-		if idx >= 512 {
-			return 0
-		}
-		if idx < 256 {
-			return math.Sin((float64(idx) / 256.0) * math.Pi)
-		}
-		return -math.Sin((float64(idx-256) / 256.0) * math.Pi)
-	case 5:
-		if idx >= 512 {
-			return 0
-		}
-		if idx < 256 {
-			return math.Sin((float64(idx) / 256.0) * math.Pi)
-		}
-		return math.Sin((float64(idx-256) / 256.0) * math.Pi)
-	case 6:
-		if idx < 512 {
-			return 1
-		}
-		return -1
-	default:
-		if idx < 512 {
-			return 1 - float64(idx)/256.0
-		}
-		return float64(idx-512)/256.0 - 1
-	}
 }
 
 func oplStereoPanGains(pan uint8) (float64, float64) {
