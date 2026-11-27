@@ -15,15 +15,15 @@ var ErrNotIT = errors.New("not an Impulse Tracker module")
 const maxChannels = 64
 
 type Module struct {
-	name                                              string
-	orders                                            []byte
-	patterns                                          []pattern
-	samples                                           []sample
-	instruments                                       []instrument
-	channels                                          int
-	pan, channelVolume                                [maxChannels]byte
-	speed, tempo, globalVolume, mixVolume, separation int
-	flags                                             uint16
+	name                                  string
+	orders                                []byte
+	patterns                              []pattern
+	samples                               []sample
+	instruments                           []instrument
+	channels                              int
+	pan, channelVolume                    [maxChannels]byte
+	speed, tempo, globalVolume, mixVolume int
+	flags                                 uint16
 }
 
 type sample struct {
@@ -121,7 +121,7 @@ func Load(reader io.Reader) (*Module, error) {
 	}
 	flags, compatible := le.Uint16(data[44:]), le.Uint16(data[42:])
 	module := &Module{name: strings.TrimSpace(string(bytes.TrimRight(data[4:30], "\x00"))), flags: flags,
-		speed: max(1, int(data[50])), tempo: max(32, int(data[51])), globalVolume: min(128, int(data[48])), mixVolume: min(128, int(data[49])), separation: min(128, int(data[52]))}
+		speed: max(1, int(data[50])), tempo: max(32, int(data[51])), globalVolume: min(128, int(data[48])), mixVolume: min(128, int(data[49]))}
 	copy(module.pan[:], data[64:128])
 	copy(module.channelVolume[:], data[128:192])
 	table := 192 + numOrders

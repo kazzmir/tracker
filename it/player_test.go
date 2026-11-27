@@ -14,7 +14,7 @@ import (
 )
 
 func TestRenderPatternBreak(test *testing.T) {
-	module := &Module{orders: []byte{0, 254, 1, 255}, speed: 2, tempo: 125, channels: 1, globalVolume: 128, mixVolume: 128, separation: 128, flags: 1}
+	module := &Module{orders: []byte{0, 254, 1, 255}, speed: 2, tempo: 125, channels: 1, globalVolume: 128, mixVolume: 128, flags: 1}
 	module.channelVolume[0] = 64
 	module.pan[0] = 0
 	module.samples = []sample{{left: []float32{1, 1}, c5: 8363, volume: 64, globalVolume: 64, loop: sampleLoop{end: 2}}}
@@ -36,6 +36,35 @@ func TestRenderPatternBreak(test *testing.T) {
 	}
 	if read(100, 0) != 1 || read(100, 1) != 0 || read(2000, 0) != 0 {
 		test.Fatal("incorrect note trigger, panning or cut")
+	}
+}
+
+func TestSamplePanRestoresChannelPanOnNextNote(test *testing.T) {
+	module := &Module{channels: 1, speed: 6, tempo: 125, flags: 1, samples: []sample{
+		{left: []float32{1}, c5: 8363, pan: 128 | 32},
+		{left: []float32{1}, c5: 8363},
+	}}
+	module.pan[0] = 0 // hard left
+	player := MakePlayer(module, 48000)
+	track := &player.channels[0]
+	play := func(instrument byte) {
+		track.beginRow(Note{pitch: 60, instrument: instrument, fields: hasPitch | hasInstrument})
+		track.updateTick(0)
+	}
+	play(1)
+	if track.pan != 128 {
+		test.Fatalf("sample pan = %d, want center", track.pan)
+	}
+	play(2)
+	if track.pan != 0 {
+		test.Fatalf("channel pan = %d, want hard left", track.pan)
+	}
+	play(1)
+	track.beginRow(Note{command: effect('X'), param: 192, fields: hasCommand})
+	track.updateTick(0)
+	play(2)
+	if track.pan != 192 {
+		test.Fatalf("explicit pan = %d, want 192", track.pan)
 	}
 }
 
@@ -96,6 +125,8 @@ func TestITCollectionAgainstFFplay(test *testing.T) {
 		{"FF1 - Battle Remix.it", 2093790, .98, .21}, // mix volume 128
 		{"Chippie Cousin.it", 2303616, .99, .16},
 		{"Wakki To Um Yop.it", 5013632, .98, .21},
+		{"Serenade Of A Squirrel.it", 11704320, .99, .15},    // sample pan restores channel pan
+		{"Screaming Cuica.it", 24883200, .99, .15},           // legacy stereo separation
 		{"Dingelding Schwing Schwing.it", 4124990, .99, .15}, // Amiga pitch slides // sample auto-vibrato
 	} {
 		test.Run(fixture.name, func(test *testing.T) {

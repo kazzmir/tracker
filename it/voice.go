@@ -122,6 +122,10 @@ func (track *channel) trigger(portamento bool) {
 	if note.fields&hasPitch == 0 {
 		return
 	}
+	if track.restorePan {
+		track.pan, track.surround = track.savedPan, track.savedSurround
+		track.restorePan = false
+	}
 	// IT's note table stores semitone ratios in 16.16 fixed point.
 	ratio := math.Round(65536 * math.Exp2(float64(mapped%12)/12))
 	freq := math.Floor(float64(wave.c5) * math.Ldexp(ratio/65536, mapped/12-5))
@@ -155,13 +159,17 @@ func (track *channel) trigger(portamento bool) {
 			track.tails = append(track.tails, tail)
 		}
 	}
+	defaultPan := -1
 	if inst != nil && inst.pan&128 == 0 {
-		track.pan = min(256, (inst.pan&127)*4)
-		track.surround = false
+		defaultPan = inst.pan & 127
 	}
 	if wave.pan&128 != 0 {
-		track.pan = min(256, (wave.pan&127)*4)
-		track.surround = false
+		defaultPan = wave.pan & 127
+	}
+	if defaultPan >= 0 {
+		// Instrument/sample pan only overrides the current note's pan.
+		track.savedPan, track.savedSurround, track.restorePan = track.pan, track.surround, true
+		track.pan, track.surround = min(256, defaultPan*4), false
 	}
 	track.voice = voice{sample: wave, instrument: inst, key: key, mapped: mapped, fade: 65536, frequency: freq}
 	track.voice.resetEnvelopes()
@@ -232,7 +240,9 @@ func (active *voice) setup(player *Player) {
 		return
 	}
 	vol *= float64(active.fade) / 65536 * float64(player.global) / 128 * float64(player.module.mixVolume) / 128
-	pan = 128 + (pan-128)*float64(player.module.separation)/128 + float64(active.panOffset)
+	// Match the default stereo mix in ffplay/libopenmpt: use the channel
+	// pan directly, without the legacy header's extra separation scaling.
+	pan += float64(active.panOffset)
 	pan = max(0, min(256, pan)) / 256
 	if player.module.flags&1 == 0 {
 		pan = .5

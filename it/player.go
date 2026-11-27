@@ -310,6 +310,8 @@ type channel struct {
 	vibratoPhase, vibratoRate, vibratoDepth, retrigger            int
 	loopRow, loopCount, highOffset                                int
 	panbrelloPhase, panbrelloSpeed, panbrelloDepth, panbrelloWave int
+	savedPan                                                      int
+	savedSurround, restorePan                                     bool
 	panbrelloNoise                                                uint32
 	nnaOverride                                                   int
 }

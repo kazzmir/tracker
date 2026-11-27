@@ -116,8 +116,7 @@ func (track *channel) updateTick(tick int) {
 			case note.volume <= 64:
 				track.volume = int(note.volume)
 			case note.volume >= 128 && note.volume <= 192:
-				track.pan = (int(note.volume) - 128) * 4
-				track.surround = false
+				track.setPan((int(note.volume) - 128) * 4)
 			}
 		}
 	}
@@ -149,8 +148,7 @@ func (track *channel) updateTick(tick int) {
 				player.global = param
 			}
 		case effect('X'):
-			track.pan = param
-			track.surround = false
+			track.setPan(param)
 		}
 	}
 	switch fx {
@@ -159,8 +157,9 @@ func (track *channel) updateTick(tick int) {
 	case effect('N'):
 		track.channelVolume += volumeSlide(track.memory[fx], first)
 	case effect('P'):
-		track.pan -= 4 * volumeSlide(track.memory[fx], first)
-		track.surround = false
+		if delta := 4 * volumeSlide(track.memory[fx], first); delta != 0 {
+			track.setPan(track.pan - delta)
+		}
 	case effect('W'):
 		player.global = max(0, min(128, player.global+volumeSlide(track.memory[fx], first)))
 	case effect('E'), effect('F'):
@@ -364,6 +363,10 @@ func retriggerVolume(vol, code int) int {
 	return vol
 }
 
+func (track *channel) setPan(pan int) {
+	track.pan, track.surround, track.restorePan = pan, false, false
+}
+
 func (track *channel) special(param int) {
 	player := track.player
 	subcode := param & 15
@@ -390,8 +393,7 @@ func (track *channel) special(param int) {
 			}
 		}
 	case 8:
-		track.pan = (subcode*256 + 8) / 15
-		track.surround = false
+		track.setPan((subcode*256 + 8) / 15)
 	case 9:
 		if subcode <= 1 {
 			track.surround = subcode == 1
