@@ -112,7 +112,8 @@ func TestT1XMAgainstFFplay(t *testing.T) {
 		{filepath.Join("FastTracker II", "Into The Blu.xm"), 7372800},
 		{filepath.Join("FastTracker II", "Treetops.xm"), 6637518},
 		{filepath.Join("FastTracker II", "Remember Da Old Styl.xm"), 17326080},
-		{filepath.Join("FastTracker II", "Shorty.xm"), 2396160}, // Digitrakker export
+		{filepath.Join("FastTracker II", "Shorty.xm"), 2396160},            // Digitrakker export
+		{filepath.Join("FastTracker II", "No Chance - Remix.xm"), 7727955}, // DigiBooster Pro export
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {
