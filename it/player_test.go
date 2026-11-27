@@ -39,6 +39,33 @@ func TestRenderPatternBreak(test *testing.T) {
 	}
 }
 
+func TestPanbrelloKeepsBasePan(test *testing.T) {
+	player := &Player{module: &Module{flags: 9}, speed: 6}
+	track := channel{player: player, pan: 128, panbrelloPhase: 64}
+	track.beginRow(Note{command: effect('Y'), param: 0x84, fields: hasCommand})
+	track.updateTick(0)
+	if track.pan != 128 || track.voice.panOffset != 32 || track.panbrelloPhase != 72 {
+		test.Fatalf("Y84: base pan %d, offset %d, phase %d", track.pan, track.voice.panOffset, track.panbrelloPhase)
+	}
+	track.beginRow(Note{command: effect('Y'), fields: hasCommand})
+	track.updateTick(0)
+	if track.voice.panOffset == 0 || track.panbrelloPhase != 80 {
+		test.Fatal("Y00 did not recall panbrello speed and depth")
+	}
+}
+
+func TestAmigaSlideTruncatesEachTick(test *testing.T) {
+	track := channel{player: &Player{module: &Module{}}, porta: 8363}
+	track.pitchSlide(-4)
+	if track.porta != 8343 {
+		test.Fatalf("slide frequency %v, want 8343 Hz", track.porta)
+	}
+	track.pitchSlide(0)
+	if track.porta != 8343 {
+		test.Fatal("zero slide changed pitch")
+	}
+}
+
 func TestSampleVibratoSweepsPerVoice(test *testing.T) {
 	wave := &sample{vibratoRate: 64, vibratoDepth: 2, vibratoSweep: 128}
 	active := voice{sample: wave}
@@ -67,7 +94,9 @@ func TestITCollectionAgainstFFplay(test *testing.T) {
 	}{
 		{"Beyond Pluto.it", 7376064, .99, .10},       // IT 1.x instrument headers
 		{"FF1 - Battle Remix.it", 2093790, .98, .21}, // mix volume 128
-		{"Chippie Cousin.it", 2303616, .99, .16},     // sample auto-vibrato
+		{"Chippie Cousin.it", 2303616, .99, .16},
+		{"Wakki To Um Yop.it", 5013632, .98, .21},
+		{"Dingelding Schwing Schwing.it", 4124990, .99, .15}, // Amiga pitch slides // sample auto-vibrato
 	} {
 		test.Run(fixture.name, func(test *testing.T) {
 			compareWithFFplay(test, filepath.Join("..", "t1", "Impulse Tracker", fixture.name), fixture.frames, fixture.minCorrelation, fixture.maxError)

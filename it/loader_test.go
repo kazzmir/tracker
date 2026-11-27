@@ -40,6 +40,20 @@ func TestCompressedSamples(test *testing.T) {
 	}
 }
 
+func TestCompressedBlockRecoversFromInvalidWidth(test *testing.T) {
+	// First block starts with delta 10, then switches to illegal width 256.
+	// The next block must start at the next 32 KiB of decoded output.
+	raw := []byte{3, 0, 10, 254, 3, 2, 0, 7, 0}
+	out := make([]float32, 32769)
+	remaining, err := decompress(raw, out, 8, false)
+	if err != nil || len(remaining) != 0 {
+		test.Fatalf("decode: %x, %v", remaining, err)
+	}
+	if out[0] != 10.0/128 || out[1] != 0 || out[32767] != 0 || out[32768] != 7.0/128 {
+		test.Fatal("invalid width discarded valid samples or displaced the next block")
+	}
+}
+
 func TestPatternMaskReuse(test *testing.T) {
 	packed := []byte{0x81, 15, 0, 1, 32, 1, 6, 0, 0x81, 0xf0, 0, 1, 0}
 	raw := append([]byte{0, byte(len(packed)), 0, 3, 0, 0, 0, 0, 0}, packed...)

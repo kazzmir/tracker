@@ -6,6 +6,7 @@ type voice struct {
 	sample                                       *sample
 	instrument                                   *instrument
 	key, mapped, volume, pan, channelVolume      int
+	panOffset                                    int
 	surround, released, fading, backward         bool
 	position, frequency, step                    float64
 	envPos                                       [3]int
@@ -231,7 +232,7 @@ func (active *voice) setup(player *Player) {
 		return
 	}
 	vol *= float64(active.fade) / 65536 * float64(player.global) / 128 * float64(player.module.mixVolume) / 128
-	pan = 128 + (pan-128)*float64(player.module.separation)/128
+	pan = 128 + (pan-128)*float64(player.module.separation)/128 + float64(active.panOffset)
 	pan = max(0, min(256, pan)) / 256
 	if player.module.flags&1 == 0 {
 		pan = .5

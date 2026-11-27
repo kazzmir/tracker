@@ -27,6 +27,13 @@ func (track *channel) beginRow(note Note) {
 		if param&15 != 0 {
 			track.vibratoDepth = param & 15
 		}
+	case effect('Y'):
+		if param>>4 != 0 {
+			track.panbrelloSpeed = param >> 4
+		}
+		if param&15 != 0 {
+			track.panbrelloDepth = param & 15
+		}
 	case effect('N'), effect('O'), effect('P'), effect('Q'), effect('S'), effect('T'), effect('W'), effect('J'):
 		track.remember(fx, param)
 	}
@@ -79,13 +86,15 @@ func linearSlide(frequency float64, amount int) float64 {
 }
 
 func (track *channel) pitchSlide(amount float64) {
-	if track.porta <= 0 {
+	if track.porta <= 0 || amount == 0 {
 		return
 	}
 	if track.player.module.flags&8 != 0 {
 		track.porta = linearSlide(track.porta, int(amount))
 	} else {
-		track.porta = 14317456 / max(1, 14317456/track.porta-amount)
+		// IT stores the result of an Amiga slide as whole Hz each tick.
+		const clock = 1712 * 8363
+		track.porta = math.Floor(clock * track.porta / max(1, clock-track.porta*amount))
 	}
 	track.porta = max(1, min(1500000, track.porta))
 }
@@ -301,6 +310,26 @@ func (track *channel) updateTick(tick int) {
 		}
 	}
 	track.voice.frequency = freq
+	track.voice.panOffset = 0
+	if fx == effect('Y') {
+		phase := track.panbrelloPhase
+		var wave int
+		switch track.panbrelloWave {
+		case 1:
+			wave = 64 - (phase+1)/2
+		case 2:
+			if phase < 128 {
+				wave = 64
+			}
+		case 3:
+			track.panbrelloNoise = track.panbrelloNoise*1664525 + 1013904223
+			wave = int(track.panbrelloNoise>>25) - 64
+		default:
+			wave = int(math.Round(64 * math.Sin(float64(phase)*math.Pi/128)))
+		}
+		track.voice.panOffset = (wave*track.panbrelloDepth + 2) / 8
+		track.panbrelloPhase = (phase + track.panbrelloSpeed) & 255
+	}
 }
 
 func (track *channel) prepareVoices() {
@@ -339,6 +368,9 @@ func (track *channel) special(param int) {
 	player := track.player
 	subcode := param & 15
 	switch param >> 4 {
+	case 5:
+		track.panbrelloWave = subcode & 3
+		track.panbrelloPhase = 0
 	case 6:
 		player.extraTicks += subcode
 	case 7:

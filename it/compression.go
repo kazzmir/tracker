@@ -51,7 +51,9 @@ func decompress(data []byte, dst []float32, bits int, it215 bool) ([]byte, error
 		var delta, value uint16
 		for index := 0; index < count; {
 			if width < 1 || width > maxWidth {
-				return nil, fmt.Errorf("invalid IT sample bit width %d", width)
+				// Some modules have a damaged tail in an otherwise complete
+				// block. Keep the decoded prefix and leave the rest silent.
+				break
 			}
 			code, err := reader.read(width)
 			if err != nil {
