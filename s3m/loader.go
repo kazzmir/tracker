@@ -138,7 +138,7 @@ type S3MFile struct {
     screamTrackerGUS bool
 }
 
-func Load(reader_ io.ReadSeeker, options ...common.LogOption) (*S3MFile, error) {
+func Load(reader_ io.ReadSeeker, options ...common.PlayerOption) (*S3MFile, error) {
     logger := common.NewDiagnostics(options...)
     reader := bufio.NewReader(reader_)
 

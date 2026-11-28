@@ -22,7 +22,7 @@ type Player struct {
 	globalSlide                                              int
 }
 
-func MakePlayer(file *S3MFile, rate int, options ...common.LogOption) *Player {
+func MakePlayer(file *S3MFile, rate int, options ...common.PlayerOption) *Player {
 	common.NewDiagnostics(options...).Printf("Initializing S3M playback at %d Hz", rate)
 	player := &Player{S3M: file, SampleRate: rate, Speed: int(file.InitialSpeed), BPM: int(file.InitialTempo), GlobalVolume: file.GlobalVolume, nextOrder: -1, channels: make([]channel, len(file.ChannelMap))}
 	if player.Speed == 0 {

@@ -5,24 +5,24 @@ import (
 	"log"
 )
 
-// LogOption configures optional diagnostics for a loader or player.
-type LogOption func(*diagnostics)
+// PlayerOption configures a tracker loader or player.
+type PlayerOption func(*playerConfig)
 
-type diagnostics struct {
+type playerConfig struct {
 	verbosity int
 	logger    *log.Logger
 }
 
 // WithVerbosity controls diagnostic output: zero (the default) is silent,
 // and a positive value enables loader details and playback warnings.
-func WithVerbosity(level int) LogOption {
-	return func(config *diagnostics) { config.verbosity = level }
+func WithVerbosity(level int) PlayerOption {
+	return func(config *playerConfig) { config.verbosity = level }
 }
 
 // WithLogger selects the logger used when diagnostics are enabled.
 // A nil logger selects the standard logger.
-func WithLogger(logger *log.Logger) LogOption {
-	return func(config *diagnostics) { config.logger = logger }
+func WithLogger(logger *log.Logger) PlayerOption {
+	return func(config *playerConfig) { config.logger = logger }
 }
 
 // Diagnostics is a logger whose zero value discards diagnostic messages.
@@ -31,8 +31,8 @@ type Diagnostics struct {
 }
 
 // NewDiagnostics resolves logging settings without changing the global logger.
-func NewDiagnostics(options ...LogOption) Diagnostics {
-	var config diagnostics
+func NewDiagnostics(options ...PlayerOption) Diagnostics {
+	var config playerConfig
 	for _, option := range options {
 		option(&config)
 	}

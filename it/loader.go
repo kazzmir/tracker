@@ -100,7 +100,7 @@ func (note Note) GetEffectName() string {
 
 var le = binary.LittleEndian
 
-func Load(reader io.Reader, options ...common.LogOption) (*Module, error) {
+func Load(reader io.Reader, options ...common.PlayerOption) (*Module, error) {
 	var magic [4]byte
 	if _, err := io.ReadFull(reader, magic[:]); err != nil || string(magic[:]) != "IMPM" {
 		return nil, ErrNotIT

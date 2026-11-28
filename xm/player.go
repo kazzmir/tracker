@@ -22,7 +22,7 @@ type Player struct {
 	nextOrder, breakRow, rowDelay             int
 }
 
-func MakePlayer(file *XMFile, sampleRate int, options ...common.LogOption) *Player {
+func MakePlayer(file *XMFile, sampleRate int, options ...common.PlayerOption) *Player {
 	common.NewDiagnostics(options...).Printf("Initializing XM playback at %d Hz", sampleRate)
 	p := &Player{XMFile: file, SampleRate: sampleRate, BPM: int(file.BPM), Speed: int(file.Tempo), GlobalVolume: 64, nextOrder: -1}
 	if p.BPM == 0 {

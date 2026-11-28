@@ -583,7 +583,7 @@ type Player struct {
     diagnostics common.Diagnostics
 }
 
-func MakePlayer(modfile *ModFile, sampleRate int, options ...common.LogOption) *Player {
+func MakePlayer(modfile *ModFile, sampleRate int, options ...common.PlayerOption) *Player {
     player := &Player{
         ModFile: modfile,
         SampleRate: sampleRate,

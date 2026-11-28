@@ -165,7 +165,7 @@ func nearestMODNote(period uint16) int {
     return len(modNotePeriods)-1
 }
 
-func Load(reader_ io.Reader, options ...common.LogOption) (*ModFile, error) {
+func Load(reader_ io.Reader, options ...common.PlayerOption) (*ModFile, error) {
     logger := common.NewDiagnostics(options...)
     var err error
 

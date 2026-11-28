@@ -295,7 +295,7 @@ func (pattern *Pattern) GetRow(row int, channels int) []Note {
     return pattern.parsedNotes[rowStart:min(rowEnd, len(pattern.parsedNotes))]
 }
 
-func Load(reader_ io.ReadSeeker, options ...common.LogOption) (*XMFile, error) {
+func Load(reader_ io.ReadSeeker, options ...common.PlayerOption) (*XMFile, error) {
     logger := common.NewDiagnostics(options...)
     reader := bufio.NewReader(reader_)
 

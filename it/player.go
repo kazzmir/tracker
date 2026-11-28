@@ -22,7 +22,7 @@ type Player struct {
 	onSpeed                               func(int, int)
 }
 
-func MakePlayer(module *Module, rate int, options ...common.LogOption) *Player {
+func MakePlayer(module *Module, rate int, options ...common.PlayerOption) *Player {
 	common.NewDiagnostics(options...).Printf("Initializing IT playback at %d Hz", rate)
 	player := &Player{module: module, rate: max(1000, rate), speed: module.speed, tempo: module.tempo, global: module.globalVolume, nextOrder: -1, channels: make([]channel, module.channels)}
 	for index := range player.channels {
