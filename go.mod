@@ -3,7 +3,6 @@ module github.com/kazzmir/tracker
 go 1.27.4
 
 require (
-	github.com/Distortions81/impsynth v0.0.0
 	github.com/ebitengine/oto/v3 v3.4.0
 	github.com/ebitenui/ebitenui v0.7.2
 	github.com/fatih/color v1.18.0
@@ -30,5 +29,3 @@ require (
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 )
-
-replace github.com/Distortions81/impsynth => ./impsynth
