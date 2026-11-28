@@ -26,7 +26,7 @@ func tryLoadS3m(path string) (*s3m.S3MFile, error) {
     }
     defer file.Close()
 
-    return s3m.Load(file, log.New(io.Discard, "", 0))
+    return s3m.Load(file)
 }
 
 func tryLoadMod(path string) (*mod.ModFile, error) {
@@ -47,7 +47,7 @@ func tryLoadXM(path string) (*xm.XMFile, error) {
 
     defer file.Close()
 
-    return xm.Load(file, log.New(io.Discard, "", 0))
+    return xm.Load(file)
 }
 
 type Renderer interface {

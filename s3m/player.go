@@ -22,7 +22,8 @@ type Player struct {
 	globalSlide                                              int
 }
 
-func MakePlayer(file *S3MFile, rate int) *Player {
+func MakePlayer(file *S3MFile, rate int, options ...common.LogOption) *Player {
+	common.NewDiagnostics(options...).Printf("Initializing S3M playback at %d Hz", rate)
 	player := &Player{S3M: file, SampleRate: rate, Speed: int(file.InitialSpeed), BPM: int(file.InitialTempo), GlobalVolume: file.GlobalVolume, nextOrder: -1, channels: make([]channel, len(file.ChannelMap))}
 	if player.Speed == 0 {
 		player.Speed = 6
@@ -242,6 +243,7 @@ func (player *Player) GetChannelData(index int, dst []float32) int {
 	}
 	return player.channels[index].scope.Peek(dst)
 }
+
 // GetSpectrumChannel copies recent, unmuted output as stereo sample pairs.
 func (player *Player) GetSpectrumChannel(index int, dst []float32) int {
 	if index < 0 || index >= len(player.channels) || player.channels[index].mute.Load() {

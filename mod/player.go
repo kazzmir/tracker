@@ -1,7 +1,6 @@
 package mod
 
 import (
-    "log"
     "math"
     "io"
     "fmt"
@@ -463,7 +462,7 @@ func (channel *Channel) applyNote(note *Note) {
                 case 0xd:
                     // The delayed note is applied by UpdateTick.
                 default:
-                    log.Printf("Warning: channel %v unhandled extra effect %x with parameter %x", channel.ChannelNumber, note.EffectParameter >> 4, note.EffectParameter & 0xf)
+                    channel.Player.diagnostics.Printf("Warning: channel %v unhandled extra effect %x with parameter %x", channel.ChannelNumber, note.EffectParameter >> 4, note.EffectParameter & 0xf)
             }
         case EffectSampleOffset:
             if note.EffectParameter > 0 {
@@ -474,7 +473,7 @@ func (channel *Channel) applyNote(note *Note) {
             }
         default:
             if note.EffectNumber != 0 || note.EffectParameter != 0 {
-                log.Printf("Warning: channel %v unhandled effect %x with parameter %v", channel.ChannelNumber, note.EffectNumber, note.EffectParameter)
+                channel.Player.diagnostics.Printf("Warning: channel %v unhandled effect %x with parameter %v", channel.ChannelNumber, note.EffectNumber, note.EffectParameter)
             }
     }
 
@@ -581,9 +580,10 @@ type Player struct {
     patternLoop int
     rowDelay int
     pendingBPM int
+    diagnostics common.Diagnostics
 }
 
-func MakePlayer(modfile *ModFile, sampleRate int) *Player {
+func MakePlayer(modfile *ModFile, sampleRate int, options ...common.LogOption) *Player {
     player := &Player{
         ModFile: modfile,
         SampleRate: sampleRate,
@@ -592,8 +592,10 @@ func MakePlayer(modfile *ModFile, sampleRate int) *Player {
         CurrentRow: 0,
         jumpOrder: -1,
         patternLoop: -1,
+        diagnostics: common.NewDiagnostics(options...),
     }
 
+    player.diagnostics.Printf("Initializing MOD playback at %d Hz", sampleRate)
     for i := range modfile.Channels {
         player.Channels = append(player.Channels, MakeChannelVoice(i, player))
     }

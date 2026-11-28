@@ -91,14 +91,16 @@ type Engine struct {
     Paused bool
 
     quit context.Context
+    logOptions []common.LogOption
 }
 
-func MakeEngine(player TrackerPlayer, audioContext *audio.Context, fps int, quit context.Context) (*Engine, error) {
+func MakeEngine(player TrackerPlayer, audioContext *audio.Context, fps int, quit context.Context, options ...common.LogOption) (*Engine, error) {
     engine := &Engine{
         AudioContext: audioContext,
         fps: fps,
         volume: 0.6,
         quit: quit,
+        logOptions: options,
     }
 
     engine.Initialize(player)
@@ -106,21 +108,21 @@ func MakeEngine(player TrackerPlayer, audioContext *audio.Context, fps int, quit
     return engine, nil
 }
 
-func loadIT(filesystem fs.FS, path string, sampleRate int) (*it.Player, error) {
+func loadIT(filesystem fs.FS, path string, sampleRate int, options ...common.LogOption) (*it.Player, error) {
     file, err := filesystem.Open(path)
     if err != nil {
         return nil, err
     }
     defer file.Close()
-    module, err := it.Load(file)
+    module, err := it.Load(file, options...)
     if err != nil {
         return nil, err
     }
-    return it.MakePlayer(module, sampleRate), nil
+    return it.MakePlayer(module, sampleRate, options...), nil
 }
 
 func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
-    itPlayer, err := loadIT(filesystem, path, engine.AudioContext.SampleRate())
+    itPlayer, err := loadIT(filesystem, path, engine.AudioContext.SampleRate(), engine.logOptions...)
     if err == nil {
         engine.Initialize(itPlayer)
         return
@@ -146,12 +148,12 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
             return nil, err
         }
 
-        loaded, err := s3m.Load(bytes.NewReader(buffer.Bytes()), log.Default())
+        loaded, err := s3m.Load(bytes.NewReader(buffer.Bytes()), engine.logOptions...)
         if err != nil {
             return nil, err
         }
 
-        return s3m.MakePlayer(loaded, engine.AudioContext.SampleRate()), nil
+        return s3m.MakePlayer(loaded, engine.AudioContext.SampleRate(), engine.logOptions...), nil
     }
 
     loadMod := func() (TrackerPlayer, error) {
@@ -162,12 +164,12 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
         }
         defer file.Close()
 
-        loaded, err := mod.Load(file)
+        loaded, err := mod.Load(file, engine.logOptions...)
         if err != nil {
             return nil, err
         }
 
-        return mod.MakePlayer(loaded, engine.AudioContext.SampleRate()), nil
+        return mod.MakePlayer(loaded, engine.AudioContext.SampleRate(), engine.logOptions...), nil
     }
 
     loadXm := func() (TrackerPlayer, error) {
@@ -186,12 +188,12 @@ func (engine *Engine) LoadSongFromFilesystem(filesystem fs.FS, path string) {
             return nil, err
         }
 
-        loaded, err := xm.Load(bytes.NewReader(buffer.Bytes()), log.Default())
+        loaded, err := xm.Load(bytes.NewReader(buffer.Bytes()), engine.logOptions...)
         if err != nil {
             return nil, err
         }
 
-        return xm.MakePlayer(loaded, engine.AudioContext.SampleRate()), nil
+        return xm.MakePlayer(loaded, engine.AudioContext.SampleRate(), engine.logOptions...), nil
     }
 
     player, err := loadS3m()
@@ -358,27 +360,27 @@ func (engine *Engine) Layout(outsideWidth, outsideHeight int) (int, int) {
     return outsideWidth, outsideHeight
 }
 
-func tryLoadS3m(path string) (*s3m.S3MFile, error) {
+func tryLoadS3m(path string, options ...common.LogOption) (*s3m.S3MFile, error) {
     file, err := os.Open(path)
     if err != nil {
         return nil, err
     }
     defer file.Close()
 
-    return s3m.Load(file, log.Default())
+    return s3m.Load(file, options...)
 }
 
-func tryLoadMod(path string) (*mod.ModFile, error) {
+func tryLoadMod(path string, options ...common.LogOption) (*mod.ModFile, error) {
     file, err := os.Open(path)
     if err != nil {
         return nil, err
     }
     defer file.Close()
 
-    return mod.Load(file)
+    return mod.Load(file, options...)
 }
 
-func tryLoadXM(path string) (*xm.XMFile, error) {
+func tryLoadXM(path string, options ...common.LogOption) (*xm.XMFile, error) {
     file, err := os.Open(path)
     if err != nil {
         return nil, err
@@ -386,40 +388,41 @@ func tryLoadXM(path string) (*xm.XMFile, error) {
 
     defer file.Close()
 
-    return xm.Load(file, log.Default())
+    return xm.Load(file, options...)
 }
 
-func TryLoad(path string, sampleRate int) (TrackerPlayer, error) {
+func TryLoad(path string, sampleRate int, options ...common.LogOption) (TrackerPlayer, error) {
     // Open via an fs.FS so desktop paths and dropped files use the same IT loader.
-    itPlayer, err := loadIT(os.DirFS(filepath.Dir(path)), filepath.Base(path), sampleRate)
+    itPlayer, err := loadIT(os.DirFS(filepath.Dir(path)), filepath.Base(path), sampleRate, options...)
     if err == nil {
         return itPlayer, nil
     }
     if !errors.Is(err, it.ErrNotIT) {
         return nil, err
     }
-    s3mFile, err := tryLoadS3m(path)
+    s3mFile, err := tryLoadS3m(path, options...)
     if err == nil {
-        return s3m.MakePlayer(s3mFile, sampleRate), nil
+        return s3m.MakePlayer(s3mFile, sampleRate, options...), nil
     }
 
-    log.Printf("Unable to load s3m: %v", err)
+    diagnostics := common.NewDiagnostics(options...)
+    diagnostics.Printf("Unable to load s3m: %v", err)
 
-    xmFile, err := tryLoadXM(path)
+    xmFile, err := tryLoadXM(path, options...)
     if err == nil {
-        return xm.MakePlayer(xmFile, sampleRate), nil
+        return xm.MakePlayer(xmFile, sampleRate, options...), nil
     }
 
-    log.Printf("Unable to load xm: %v", err)
+    diagnostics.Printf("Unable to load xm: %v", err)
 
-    modFile, err := tryLoadMod(path)
+    modFile, err := tryLoadMod(path, options...)
     if err != nil {
         return nil, err
     }
-    return mod.MakePlayer(modFile, sampleRate), nil
+    return mod.MakePlayer(modFile, sampleRate, options...), nil
 }
 
-func runGui(player TrackerPlayer, sampleRate int, quit context.Context) error {
+func runGui(player TrackerPlayer, sampleRate int, quit context.Context, options ...common.LogOption) error {
     fps := 30
 
     ebiten.SetTPS(fps)
@@ -436,7 +439,7 @@ func runGui(player TrackerPlayer, sampleRate int, quit context.Context) error {
     modPlayer.Channels[3].Mute = true
     */
 
-    engine, err := MakeEngine(player, audioContext, fps, quit)
+    engine, err := MakeEngine(player, audioContext, fps, quit, options...)
     if err != nil {
         return err
     }
@@ -457,7 +460,9 @@ func main(){
     wav := flag.String("wav", "", "Output wav file")
     cli := flag.Bool("cli", false, "Run in CLI mode without GUI")
     rate := flag.Int("rate", 48000, "Playback and WAV sample rate in Hz")
+    verbosity := flag.Int("verbosity", 0, "Loader and playback diagnostics (0: quiet, 1: verbose)")
     flag.Parse()
+    options := []common.LogOption{common.WithVerbosity(*verbosity)}
     if *rate < 1000 || *rate > 384000 {
         log.Printf("Sample rate must be between 1000 and 384000 Hz")
         return
@@ -496,7 +501,7 @@ func main(){
         path := flag.Args()[0]
 
         var err error
-        player, err = TryLoad(path, sampleRate)
+        player, err = TryLoad(path, sampleRate, options...)
         if err != nil {
             log.Printf("Error loading module: %v", err)
             return
@@ -540,7 +545,7 @@ func main(){
             log.Printf("Error: %v", err)
         }
     } else {
-        err := runGui(player, sampleRate, quit)
+        err := runGui(player, sampleRate, quit, options...)
         if err != nil {
             log.Printf("Error: %v", err)
         }
