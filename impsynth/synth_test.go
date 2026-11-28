@@ -512,8 +512,24 @@ func pcmHasSignal(pcm []int16) bool {
 	return false
 }
 
+// The Nuked reference tools are optional local fixtures, not part of tracker.
+func requireNukedFixtures(t *testing.T, source string) {
+	t.Helper()
+	for _, path := range []string{source, "third_party/nuked-opl3/opl3.c", "third_party/nuked-opl3/opl3.h"} {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Skipf("local Nuked reference fixture %s is missing", path)
+		} else if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := exec.LookPath("gcc"); err != nil {
+		t.Skip("gcc is not available for the Nuked reference tools")
+	}
+}
+
 func buildNukedDumpTool(t *testing.T) string {
 	t.Helper()
+	requireNukedFixtures(t, "bench/nuked_opl3_dump.c")
 	nukedDumpOnce.Do(func() {
 		out := filepath.Join(os.TempDir(), "nuked-opl3-dump-test")
 		cmd := exec.Command(
@@ -580,6 +596,7 @@ func renderNukedPCM(t *testing.T, sampleRate int, frames int, regs []uint16) []i
 
 func buildNukedSeqDumpTool(t *testing.T) string {
 	t.Helper()
+	requireNukedFixtures(t, "bench/nuked_opl3_seq_dump.c")
 	nukedSeqDumpOnce.Do(func() {
 		out := filepath.Join(os.TempDir(), "nuked-opl3-seq-dump-test")
 		cmd := exec.Command(

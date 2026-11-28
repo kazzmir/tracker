@@ -3,7 +3,7 @@ package s3m
 import (
 	"math"
 
-	"github.com/Distortions81/impsynth"
+	"github.com/kazzmir/tracker/impsynth"
 )
 
 // OPLPatch is the S3M SCRI register data: two operators followed by
