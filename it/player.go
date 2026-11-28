@@ -22,7 +22,8 @@ type Player struct {
 	onSpeed                               func(int, int)
 }
 
-func MakePlayer(module *Module, rate int) *Player {
+func MakePlayer(module *Module, rate int, options ...common.PlayerOption) *Player {
+	common.NewDiagnostics(options...).Printf("Initializing IT playback at %d Hz", rate)
 	player := &Player{module: module, rate: max(1000, rate), speed: module.speed, tempo: module.tempo, global: module.globalVolume, nextOrder: -1, channels: make([]channel, module.channels)}
 	for index := range player.channels {
 		track := &player.channels[index]
@@ -235,6 +236,7 @@ func (player *Player) GetChannelData(ch int, dst []float32) int {
 	}
 	return player.channels[ch].scope.Peek(dst)
 }
+
 // GetSpectrumChannel copies recent, unmuted output as stereo sample pairs.
 func (player *Player) GetSpectrumChannel(index int, dst []float32) int {
 	if index < 0 || index >= len(player.channels) || player.channels[index].mute.Load() {

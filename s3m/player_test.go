@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
-	"log"
 	"math"
 	"os"
 	"os/exec"
@@ -169,7 +168,7 @@ func compareWithFFplay(t *testing.T, path string, frames int, minCorrelation, ma
 		t.Fatal(err)
 	}
 	defer file.Close()
-	module, err := Load(file, log.New(io.Discard, "", 0))
+	module, err := Load(file)
 	if err != nil {
 		t.Fatal(err)
 	}

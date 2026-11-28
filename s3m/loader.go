@@ -5,8 +5,9 @@ import (
     "bytes"
     "fmt"
     "encoding/binary"
-    "log"
     "io"
+
+    "github.com/kazzmir/tracker/common"
 )
 
 const (
@@ -137,7 +138,8 @@ type S3MFile struct {
     screamTrackerGUS bool
 }
 
-func Load(reader_ io.ReadSeeker, logger *log.Logger) (*S3MFile, error) {
+func Load(reader_ io.ReadSeeker, options ...common.PlayerOption) (*S3MFile, error) {
+    logger := common.NewDiagnostics(options...)
     reader := bufio.NewReader(reader_)
 
     name := make([]byte, 28)

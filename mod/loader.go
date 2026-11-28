@@ -3,9 +3,10 @@ package mod
 import (
     "io"
     "bytes"
-    "log"
     "fmt"
     "bufio"
+
+    "github.com/kazzmir/tracker/common"
 )
 
 type Effect byte
@@ -164,7 +165,8 @@ func nearestMODNote(period uint16) int {
     return len(modNotePeriods)-1
 }
 
-func Load(reader_ io.Reader) (*ModFile, error) {
+func Load(reader_ io.Reader, options ...common.PlayerOption) (*ModFile, error) {
+    logger := common.NewDiagnostics(options...)
     var err error
 
     reader := bufio.NewReader(reader_)
@@ -213,7 +215,7 @@ func Load(reader_ io.Reader) (*ModFile, error) {
             return nil, err
         }
 
-        log.Printf("Sample %v: Name='%s', Length=%d, FineTune=%d, Volume=%d, LoopStart=%d, LoopLength=%d", i, string(sampleName), sampleLength, fineTune, volume, loopStart, loopLength)
+        logger.Printf("Sample %v: Name='%s', Length=%d, FineTune=%d, Volume=%d, LoopStart=%d, LoopLength=%d", i, string(sampleName), sampleLength, fineTune, volume, loopStart, loopLength)
 
         samples = append(samples, Sample{
             Name: string(sampleName),
@@ -236,7 +238,7 @@ func Load(reader_ io.Reader) (*ModFile, error) {
     }
 
     patternMax := 0
-    log.Printf("Reading %v orders", orderCount)
+    logger.Printf("Reading %v orders", orderCount)
     orders := make([]byte, 128)
     _, err = io.ReadFull(reader, orders)
     if err != nil {
@@ -247,7 +249,7 @@ func Load(reader_ io.Reader) (*ModFile, error) {
         patternMax = max(patternMax, int(value))
     }
 
-    log.Printf("Pattern max: %v", patternMax)
+    logger.Printf("Pattern max: %v", patternMax)
 
     // read mod kind again
     kind := make([]byte, 4)
@@ -257,16 +259,16 @@ func Load(reader_ io.Reader) (*ModFile, error) {
 
     if bytes.Equal(kind, []byte{'M', '.', 'K', '.'}) {
         channels = 4
-        log.Printf("Detected 4 channel mod")
+        logger.Printf("Detected 4 channel mod")
     } else if bytes.Equal(kind, []byte{'6', 'C', 'H', 'N'}) {
         channels = 6
-        log.Printf("Detected 6 channel mod")
+        logger.Printf("Detected 6 channel mod")
     } else if bytes.Equal(kind, []byte{'8', 'C', 'H', 'N'}) {
         channels = 8
-        log.Printf("Detected 8 channel mod")
+        logger.Printf("Detected 8 channel mod")
     } else if bytes.Equal(kind, []byte{'1', '0', 'C', 'H'}) {
         channels = 10
-        log.Printf("Detected 10 channel mod")
+        logger.Printf("Detected 10 channel mod")
     } else {
         return nil, fmt.Errorf("Not a mod file: %v '%v'", kind, string(kind))
     }
@@ -288,7 +290,7 @@ func Load(reader_ io.Reader) (*ModFile, error) {
         }
     }
     for i := range patternMax + 1 {
-        log.Printf("Reading pattern %d", i)
+        logger.Printf("Reading pattern %d", i)
 
         var rows []Row
         for range 64 {
@@ -340,7 +342,7 @@ func Load(reader_ io.Reader) (*ModFile, error) {
             continue
         }
 
-        log.Printf("Sample %v length %v", i, samples[i].Length * 2)
+        logger.Printf("Sample %v length %v", i, samples[i].Length * 2)
         data := make([]float32, 0, int(samples[i].Length) * 2)
 
         for range cap(data) {

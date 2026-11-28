@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/kazzmir/tracker/common"
 )
 
 var ErrNotIT = errors.New("not an Impulse Tracker module")
@@ -98,7 +100,7 @@ func (note Note) GetEffectName() string {
 
 var le = binary.LittleEndian
 
-func Load(reader io.Reader) (*Module, error) {
+func Load(reader io.Reader, options ...common.PlayerOption) (*Module, error) {
 	var magic [4]byte
 	if _, err := io.ReadFull(reader, magic[:]); err != nil || string(magic[:]) != "IMPM" {
 		return nil, ErrNotIT
@@ -122,6 +124,7 @@ func Load(reader io.Reader) (*Module, error) {
 	flags, compatible := le.Uint16(data[44:]), le.Uint16(data[42:])
 	module := &Module{name: strings.TrimSpace(string(bytes.TrimRight(data[4:30], "\x00"))), flags: flags,
 		speed: max(1, int(data[50])), tempo: max(32, int(data[51])), globalVolume: min(128, int(data[48])), mixVolume: min(128, int(data[49]))}
+	common.NewDiagnostics(options...).Printf("IT module %q: %d orders, %d instruments, %d samples, %d patterns", module.name, numOrders, numInst, numSamples, numPatterns)
 	copy(module.pan[:], data[64:128])
 	copy(module.channelVolume[:], data[128:192])
 	table := 192 + numOrders

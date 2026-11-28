@@ -3,9 +3,11 @@ package s3m
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
 	"log"
+	"strings"
 	"testing"
+
+	"github.com/kazzmir/tracker/common"
 )
 
 func TestLoadAndTriggerAdLibInstrument(t *testing.T) {
@@ -29,9 +31,21 @@ func TestLoadAndTriggerAdLibInstrument(t *testing.T) {
 	header[28] = 48
 	binary.LittleEndian.PutUint32(header[32:], 8363)
 	copy(header[76:], "SCRI")
-	module, err := Load(bytes.NewReader(data), log.New(io.Discard, "", 0))
+	var output bytes.Buffer
+	logger := common.WithLogger(log.New(&output, "", 0))
+	module, err := Load(bytes.NewReader(data), logger)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("loader logged without verbosity: %s", &output)
+	}
+	verbose := common.WithVerbosity(1)
+	if _, err := Load(bytes.NewReader(data), logger, verbose); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "Instruments: 1") {
+		t.Fatalf("verbose loader omitted instrument count: %s", &output)
 	}
 	if len(module.ChannelMap) != 1 || module.ChannelPanning[0] != 128 {
 		t.Fatalf("AdLib channel not loaded: %v, %v", module.ChannelMap, module.ChannelPanning)
@@ -40,7 +54,11 @@ func TestLoadAndTriggerAdLibInstrument(t *testing.T) {
 	if instrument.OPL == nil || *instrument.OPL != patch || instrument.Volume != 48 || instrument.MiddleC != 8363 {
 		t.Fatalf("wrong AdLib instrument: %+v", instrument)
 	}
-	player := MakePlayer(module, 48000)
+	output.Reset()
+	player := MakePlayer(module, 48000, logger, verbose)
+	if !strings.Contains(output.String(), "48000 Hz") {
+		t.Fatalf("verbose player omitted initialization details: %s", &output)
+	}
 	track := &player.channels[0]
 	track.beginRow(Note{Note: 0x40, ChangeNote: true, SampleNumber: 1, ChangeSample: true})
 	track.updateTick(0)

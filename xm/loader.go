@@ -4,9 +4,10 @@ import (
     "io"
     "bufio"
     "fmt"
-    "log"
     "bytes"
     "encoding/binary"
+
+    "github.com/kazzmir/tracker/common"
 )
 
 type XMFile struct {
@@ -163,6 +164,10 @@ type Sample struct {
 }
 
 func (pattern *Pattern) ParseNotes() []Note {
+    return pattern.parseNotes(common.Diagnostics{})
+}
+
+func (pattern *Pattern) parseNotes(logger common.Diagnostics) []Note {
     var notes []Note
 
     reader := bytes.NewReader(pattern.PatternData)
@@ -193,7 +198,7 @@ func (pattern *Pattern) ParseNotes() []Note {
             if noteFollows {
                 noteByte, err = reader.ReadByte()
                 if err != nil {
-                    log.Printf("Error reading note byte: %v", err)
+                    logger.Printf("Error reading note byte: %v", err)
                     break
                 }
             }
@@ -207,7 +212,7 @@ func (pattern *Pattern) ParseNotes() []Note {
         if instrumentFollows {
             instrument, err := reader.ReadByte()
             if err != nil {
-                log.Printf("Error reading instrument: %v", err)
+                logger.Printf("Error reading instrument: %v", err)
                 break
             }
 
@@ -218,7 +223,7 @@ func (pattern *Pattern) ParseNotes() []Note {
         if volumeFollows {
             volume, err := reader.ReadByte()
             if err != nil {
-                log.Printf("Error reading volume: %v", err)
+                logger.Printf("Error reading volume: %v", err)
                 break
             }
 
@@ -229,7 +234,7 @@ func (pattern *Pattern) ParseNotes() []Note {
         if effectFollows {
             effectType, err := reader.ReadByte()
             if err != nil {
-                log.Printf("Error reading effect type: %v", err)
+                logger.Printf("Error reading effect type: %v", err)
                 break
             }
             note.HasEffectType = true
@@ -239,7 +244,7 @@ func (pattern *Pattern) ParseNotes() []Note {
         if effectParameterFollows {
             effectParameter, err := reader.ReadByte()
             if err != nil {
-                log.Printf("Error reading effect parameter: %v", err)
+                logger.Printf("Error reading effect parameter: %v", err)
                 break
             }
             note.HasEffectParameter = true
@@ -290,7 +295,8 @@ func (pattern *Pattern) GetRow(row int, channels int) []Note {
     return pattern.parsedNotes[rowStart:min(rowEnd, len(pattern.parsedNotes))]
 }
 
-func Load(reader_ io.ReadSeeker, logger *log.Logger) (*XMFile, error) {
+func Load(reader_ io.ReadSeeker, options ...common.PlayerOption) (*XMFile, error) {
+    logger := common.NewDiagnostics(options...)
     reader := bufio.NewReader(reader_)
 
     maximumFileSize, err := reader_.Seek(0, io.SeekEnd)
@@ -461,8 +467,10 @@ func Load(reader_ io.ReadSeeker, logger *log.Logger) (*XMFile, error) {
         }
         patterns = append(patterns, pattern)
 
-        notes := pattern.ParseNotes()
-        logger.Printf("Pattern %d notes: %d", i, len(notes))
+        if logger.Enabled() {
+            notes := pattern.parseNotes(logger)
+            logger.Printf("Pattern %d notes: %d", i, len(notes))
+        }
     }
 
     // A trailing order that points past the stored patterns is an end
@@ -527,7 +535,7 @@ func usesLinearPanning(trackerName []byte) bool {
     }
 }
 
-func readPattern(logger *log.Logger, reader *bufio.Reader, maximumFileSize int64, patternIndex int) (Pattern, error) {
+func readPattern(logger common.Diagnostics, reader *bufio.Reader, maximumFileSize int64, patternIndex int) (Pattern, error) {
     logger.Printf("Reading pattern %d", patternIndex)
 
     var patternHeaderSize uint32
@@ -589,7 +597,7 @@ func readPattern(logger *log.Logger, reader *bufio.Reader, maximumFileSize int64
     }
 }
 
-func readInstrument(logger *log.Logger, reader_ io.Reader, instrumentHeaderSize uint32) (*Instrument, error) {
+func readInstrument(logger common.Diagnostics, reader_ io.Reader, instrumentHeaderSize uint32) (*Instrument, error) {
     if instrumentHeaderSize < 29 {
         return nil, fmt.Errorf("instrument header too short: %d", instrumentHeaderSize)
     }

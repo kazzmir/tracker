@@ -22,7 +22,8 @@ type Player struct {
 	nextOrder, breakRow, rowDelay             int
 }
 
-func MakePlayer(file *XMFile, sampleRate int) *Player {
+func MakePlayer(file *XMFile, sampleRate int, options ...common.PlayerOption) *Player {
+	common.NewDiagnostics(options...).Printf("Initializing XM playback at %d Hz", sampleRate)
 	p := &Player{XMFile: file, SampleRate: sampleRate, BPM: int(file.BPM), Speed: int(file.Tempo), GlobalVolume: 64, nextOrder: -1}
 	if p.BPM == 0 {
 		p.BPM = 125
@@ -273,6 +274,7 @@ func (p *Player) GetChannelData(i int, dst []float32) int {
 	}
 	return p.Channels[i].ScopeBuffer.Peek(dst)
 }
+
 // GetSpectrumChannel copies recent, unmuted output as stereo sample pairs.
 func (p *Player) GetSpectrumChannel(index int, dst []float32) int {
 	if index < 0 || index >= len(p.Channels) || p.Channels[index].Mute {

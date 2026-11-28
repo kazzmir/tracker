@@ -3,9 +3,9 @@ package xm
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
-	"log"
 	"testing"
+
+	"github.com/kazzmir/tracker/common"
 )
 
 func TestTrackerPanningMode(t *testing.T) {
@@ -41,7 +41,7 @@ func TestMultiSampleInstrument(t *testing.T) {
 	binary.LittleEndian.PutUint32(h[48:], 4)
 	h[54] = 0x11
 	data = append(data, 32, 32, 0, 64, 0, 224, 0, 224)
-	instrument, err := readInstrument(log.New(io.Discard, "", 0), bytes.NewReader(data[4:]), 263)
+	instrument, err := readInstrument(common.Diagnostics{}, bytes.NewReader(data[4:]), 263)
 	if err != nil {
 		t.Fatal(err)
 	}

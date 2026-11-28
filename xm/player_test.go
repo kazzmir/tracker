@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
-	"log"
 	"math"
 	"os"
 	"os/exec"
@@ -132,7 +131,7 @@ func compareWithFFplay(t *testing.T, ffmpeg, path string, wantFrames int) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	module, err := Load(f, log.New(io.Discard, "", 0))
+	module, err := Load(f)
 	if err != nil {
 		t.Fatal(err)
 	}
